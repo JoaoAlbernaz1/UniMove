@@ -1,0 +1,297 @@
+{
+  "info": {
+    "name": "UniMove API",
+    "description": "Collection de teste da API UniMove. Importe no Postman, ajuste os e-mails para um domínio permitido no .env e execute os fluxos com tokens separados por perfil.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "driverEmail", "value": "motorista@seu-dominio-institucional.edu.br" },
+    { "key": "driverPassword", "value": "SenhaTeste123!" },
+    { "key": "driverCpf", "value": "52998224725" },
+    { "key": "passengerEmail", "value": "passageiro@seu-dominio-institucional.edu.br" },
+    { "key": "passengerPassword", "value": "SenhaTeste123!" },
+    { "key": "passengerCpf", "value": "11144477735" },
+    { "key": "adminEmail", "value": "admin-configurado-no-seed@seu-dominio.edu.br" },
+    { "key": "adminPassword", "value": "configure-no-seed" },
+    { "key": "driverToken", "value": "" },
+    { "key": "passengerToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "refreshOwner", "value": "" },
+    { "key": "driverId", "value": "" },
+    { "key": "passengerId", "value": "" },
+    { "key": "vehicleId", "value": "" },
+    { "key": "originLocationId", "value": "" },
+    { "key": "destinationLocationId", "value": "" },
+    { "key": "routeTemplateId", "value": "" },
+    { "key": "rideId", "value": "" },
+    { "key": "rideRequestId", "value": "" },
+    { "key": "reservationId", "value": "" },
+    { "key": "incidentId", "value": "" },
+    { "key": "notificationId", "value": "" },
+    { "key": "searchDate", "value": "" },
+    { "key": "departureTime", "value": "18:30" },
+    { "key": "originName", "value": "Ceilândia" },
+    { "key": "destinationName", "value": "UCB Taguatinga" },
+    { "key": "vehiclePlate", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 - Público e autenticação",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" }
+        },
+        {
+          "name": "Health - prontidão do banco",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health/ready" }
+        },
+        {
+          "name": "Registrar motorista",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Motorista de Teste\",\n  \"cpf\": \"{{driverCpf}}\",\n  \"institutionalEmail\": \"{{driverEmail}}\",\n  \"password\": \"{{driverPassword}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('driverId', pm.response.json().id);"] } }]
+        },
+        {
+          "name": "Login motorista",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{driverEmail}}\",\n  \"password\": \"{{driverPassword}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('driverToken', body.accessToken);", "pm.collectionVariables.set('refreshToken', body.refreshToken);", "pm.collectionVariables.set('refreshOwner', 'driver');"] } }]
+        },
+        {
+          "name": "Registrar passageiro",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Passageiro de Teste\",\n  \"cpf\": \"{{passengerCpf}}\",\n  \"institutionalEmail\": \"{{passengerEmail}}\",\n  \"password\": \"{{passengerPassword}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('passengerId', pm.response.json().id);"] } }]
+        },
+        {
+          "name": "Login passageiro",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{passengerEmail}}\",\n  \"password\": \"{{passengerPassword}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('passengerToken', body.accessToken);", "pm.collectionVariables.set('refreshToken', body.refreshToken);", "pm.collectionVariables.set('refreshOwner', 'passenger');"] } }]
+        },
+        {
+          "name": "Login administrador (seed)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('adminToken', body.accessToken);", "pm.collectionVariables.set('refreshToken', body.refreshToken);", "pm.collectionVariables.set('refreshOwner', 'admin');"] } }]
+        },
+        {
+          "name": "Renovar token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/refresh"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('refreshToken', body.refreshToken);", "const tokenByOwner = { driver: 'driverToken', passenger: 'passengerToken', admin: 'adminToken' };", "const tokenVariable = tokenByOwner[pm.collectionVariables.get('refreshOwner')];", "if (tokenVariable) pm.collectionVariables.set(tokenVariable, body.accessToken);"] } }]
+        },
+        {
+          "name": "Logout (revoga refresh token)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Motorista",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }] },
+      "item": [
+        {
+          "name": "Meu perfil",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/users/me" }
+        },
+        {
+          "name": "Atualizar meu perfil",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Motorista UniMove\"\n}" }, "url": "{{baseUrl}}/api/v1/users/me" }
+        },
+        {
+          "name": "Alterar senha (execute por último)",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"{{driverPassword}}\",\n  \"newPassword\": \"NovaSenhaTeste123!\"\n}" }, "url": "{{baseUrl}}/api/v1/users/me/password" }
+        },
+        {
+          "name": "Desativar minha conta (execute por último)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/users/me" }
+        },
+        {
+          "name": "Criar veículo",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"brand\": \"Fiat\",\n  \"model\": \"Argo\",\n  \"color\": \"Prata\",\n  \"plate\": \"{{vehiclePlate}}\",\n  \"year\": 2023,\n  \"passengerCapacity\": 4\n}" }, "url": "{{baseUrl}}/api/v1/vehicles" },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('vehiclePlate', 'TST' + Date.now().toString().slice(-8));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('vehicleId', pm.response.json().id);"] } }
+          ]
+        },
+        {
+          "name": "Listar meus veículos",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/vehicles" }
+        },
+        {
+          "name": "Detalhar veículo",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/vehicles/{{vehicleId}}" }
+        },
+        {
+          "name": "Atualizar veículo",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"color\": \"Cinza\",\n  \"passengerCapacity\": 4\n}" }, "url": "{{baseUrl}}/api/v1/vehicles/{{vehicleId}}" }
+        },
+        {
+          "name": "Inativar veículo (execute por último)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/vehicles/{{vehicleId}}" }
+        },
+        {
+          "name": "Listar locations",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/locations" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const locations = pm.response.json();", "const origin = locations.find((item) => item.name === pm.collectionVariables.get('originName'));", "const destination = locations.find((item) => item.name === pm.collectionVariables.get('destinationName'));", "if (origin) pm.collectionVariables.set('originLocationId', origin.id);", "if (destination) pm.collectionVariables.set('destinationLocationId', destination.id);", "pm.test('Locations de origem e destino existem', () => { pm.expect(origin).to.exist; pm.expect(destination).to.exist; });"] } }]
+        },
+        {
+          "name": "Criar template de rota",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"originLocationId\": \"{{originLocationId}}\",\n  \"destinationLocationId\": \"{{destinationLocationId}}\",\n  \"weekdays\": [\"MONDAY\", \"TUESDAY\", \"WEDNESDAY\", \"THURSDAY\", \"FRIDAY\", \"SATURDAY\", \"SUNDAY\"],\n  \"departureTime\": \"{{departureTime}}\",\n  \"availableSeats\": 4,\n  \"timezone\": \"America/Sao_Paulo\"\n}" }, "url": "{{baseUrl}}/api/v1/route-templates" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('routeTemplateId', pm.response.json().id);"] } }]
+        },
+        {
+          "name": "Listar meus templates",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/route-templates" }
+        },
+        {
+          "name": "Detalhar template",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/route-templates/{{routeTemplateId}}" }
+        },
+        {
+          "name": "Atualizar template",
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"availableSeats\": 3,\n  \"departureTime\": \"18:30\"\n}" }, "url": "{{baseUrl}}/api/v1/route-templates/{{routeTemplateId}}" }
+        },
+        {
+          "name": "Inativar template (execute por último)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/route-templates/{{routeTemplateId}}" }
+        },
+        {
+          "name": "Buscar corridas (gera corrida para amanhã)",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/api/v1/matching/search?originLocationId={{originLocationId}}&destinationLocationId={{destinationLocationId}}&date={{searchDate}}&departureTime={{departureTime}}&seats=1", "host": ["{{baseUrl}}"], "path": ["api", "v1", "matching", "search"], "query": [{ "key": "originLocationId", "value": "{{originLocationId}}" }, { "key": "destinationLocationId", "value": "{{destinationLocationId}}" }, { "key": "date", "value": "{{searchDate}}" }, { "key": "departureTime", "value": "{{departureTime}}" }, { "key": "seats", "value": "1" }] } },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["const date = new Date();", "date.setUTCDate(date.getUTCDate() + 1);", "pm.collectionVariables.set('searchDate', date.toISOString().slice(0, 10));"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["const rides = pm.response.json();", "if (rides.length) pm.collectionVariables.set('rideId', rides[0].id);", "pm.test('Pelo menos uma corrida compatível foi encontrada', () => pm.expect(rides.length).to.be.above(0));"] } }
+          ]
+        },
+        {
+          "name": "Listar solicitações recebidas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/driver/ride-requests" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const requests = pm.response.json();", "const pending = requests.find((item) => item.status === 'PENDING');", "if (pending) pm.collectionVariables.set('rideRequestId', pending.id);"] } }]
+        },
+        {
+          "name": "Aceitar solicitação",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/ride-requests/{{rideRequestId}}/accept" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.id) pm.collectionVariables.set('reservationId', body.id);"] } }]
+        },
+        {
+          "name": "Recusar solicitação (cenário alternativo)",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/ride-requests/{{rideRequestId}}/reject" }
+        },
+        {
+          "name": "Minhas corridas como motorista",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/rides/me?role=driver&page=1&limit=20" }
+        },
+        {
+          "name": "Iniciar corrida",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/rides/{{rideId}}/start" }
+        },
+        {
+          "name": "Concluir corrida",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/rides/{{rideId}}/complete" }
+        },
+        {
+          "name": "Cancelar corrida (cenário alternativo)",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"OTHER\",\n  \"details\": \"Cancelamento de teste\"\n}" }, "url": "{{baseUrl}}/api/v1/rides/{{rideId}}/cancel" }
+        },
+        {
+          "name": "Histórico de viagens",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/history?page=1&limit=20" }
+        }
+      ]
+    },
+    {
+      "name": "02 - Passageiro",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{passengerToken}}", "type": "string" }] },
+      "item": [
+        {
+          "name": "Solicitar vaga na corrida",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"seats\": 1\n}" }, "url": "{{baseUrl}}/api/v1/rides/{{rideId}}/requests" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('rideRequestId', pm.response.json().id);"] } }]
+        },
+        {
+          "name": "Minhas corridas como passageiro",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/rides/me?role=passenger&page=1&limit=20" }
+        },
+        {
+          "name": "Cancelar reserva (cenário alternativo)",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"OTHER\",\n  \"details\": \"Cancelamento de teste\"\n}" }, "url": "{{baseUrl}}/api/v1/reservations/{{reservationId}}/cancel" }
+        },
+        {
+          "name": "Avaliar motorista (após corrida concluída)",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"reviewedUserId\": \"{{driverId}}\",\n  \"score\": 5,\n  \"comment\": \"Teste da API\"\n}" }, "url": "{{baseUrl}}/api/v1/ratings" }
+        },
+        {
+          "name": "Listar notificações",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/notifications?page=1&limit=20" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const notifications = pm.response.json();", "if (notifications.length) pm.collectionVariables.set('notificationId', notifications[0].id);"] } }]
+        },
+        {
+          "name": "Contagem de notificações não lidas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/notifications/unread-count" }
+        },
+        {
+          "name": "Marcar notificação como lida",
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/v1/notifications/{{notificationId}}/read" }
+        },
+        {
+          "name": "Marcar todas as notificações como lidas",
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/v1/notifications/read-all" }
+        },
+        {
+          "name": "Relatar incidente",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"rideId\": \"{{rideId}}\",\n  \"reportedUserId\": \"{{driverId}}\",\n  \"type\": \"OTHER\",\n  \"description\": \"Incidente criado para teste da API\"\n}" }, "url": "{{baseUrl}}/api/v1/incidents" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('incidentId', pm.response.json().id);"] } }]
+        }
+      ]
+    },
+    {
+      "name": "03 - Administrador (requer usuário admin criado pelo seed)",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+      "item": [
+        { "name": "Listar usuários", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/users?page=1&limit=20" } },
+        { "name": "Detalhar usuário passageiro", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/users/{{passengerId}}" } },
+        { "name": "Atualizar status do usuário", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"ACTIVE\"\n}" }, "url": "{{baseUrl}}/api/v1/admin/users/{{passengerId}}/status" } },
+        { "name": "Listar corridas", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/rides?page=1&limit=20" } },
+        { "name": "Detalhar corrida", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/rides/{{rideId}}" } },
+        { "name": "Listar incidentes", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/incidents?page=1&limit=20" } },
+        { "name": "Detalhar incidente", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/incidents/{{incidentId}}" } },
+        { "name": "Atualizar incidente", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"UNDER_REVIEW\"\n}" }, "url": "{{baseUrl}}/api/v1/admin/incidents/{{incidentId}}" } },
+        { "name": "Listar logs de auditoria", "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/admin/audit-logs?page=1&limit=20" } }
+      ]
+    }
+  ]
+}

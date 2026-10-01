@@ -13,6 +13,7 @@ import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import { UserStatus } from '../../generated/prisma/enums';
+import { ApiBearerAuth } from '@nestjs/swagger';
 
 class UpdateMeDto {
   @IsOptional() @IsString() @MinLength(3) fullName?: string;
@@ -23,6 +24,7 @@ class ChangePasswordDto {
   @IsString() @MinLength(8) newPassword!: string;
 }
 
+@ApiBearerAuth()
 @Controller('users/me')
 export class UsersController {
   constructor(private readonly prisma: PrismaService) {}
