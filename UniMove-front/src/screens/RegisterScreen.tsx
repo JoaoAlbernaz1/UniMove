@@ -13,9 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountCreatedError, useAuth } from '../auth/AuthContext';
 import { Button } from '../components/Button';
+import { LegalModal } from '../components/LegalModal';
 import { Message } from '../components/Message';
 import { TextField } from '../components/TextField';
 import { ALLOWED_EMAIL_DOMAINS } from '../config';
+import { PRIVACY_POLICY, TERMS_OF_USE, type LegalDocument } from '../legal';
 import { colors, fonts, maxContentWidth } from '../theme';
 import {
   emailError,
@@ -39,6 +41,8 @@ export function RegisterScreen({ onBack }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [openDocument, setOpenDocument] = useState<LegalDocument | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A01: conta já existe (ou acabou de ser criada) — oferece voltar ao login.
@@ -59,8 +63,10 @@ export function RegisterScreen({ onBack }: Props) {
     if (error) scrollRef.current?.scrollToEnd({ animated: true });
   }, [error]);
 
-  // I01 comando 1: habilitado quando todos os campos obrigatórios (RN01) estão preenchidos.
-  const filled = [fullName, cpf, email, password, confirmation].every((value) => value.trim());
+  // I01 comando 1: habilitado quando todos os campos obrigatórios (RN01) estão preenchidos
+  // e os termos foram aceitos.
+  const filled =
+    [fullName, cpf, email, password, confirmation].every((value) => value.trim()) && acceptedTerms;
 
   function validate() {
     if (fullName.trim().length < 3) return 'Digite seu nome completo.';
@@ -201,6 +207,38 @@ export function RegisterScreen({ onBack }: Props) {
                 onSubmitEditing={filled ? handleSubmit : undefined}
                 editable={!loading}
               />
+
+              <View style={styles.terms}>
+                <Pressable
+                  onPress={() => setAcceptedTerms((value) => !value)}
+                  disabled={loading}
+                  hitSlop={8}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: acceptedTerms, disabled: loading }}
+                  accessibilityLabel="Concordo com os Termos de Uso e a Política de Privacidade"
+                  style={[styles.checkbox, acceptedTerms && styles.checkboxOn]}
+                >
+                  {acceptedTerms ? <Check size={14} color={colors.white} strokeWidth={3} /> : null}
+                </Pressable>
+                <Text style={styles.termsText}>
+                  <Text onPress={() => setAcceptedTerms((value) => !value)}>Concordo com os </Text>
+                  <Text
+                    style={styles.termsLink}
+                    onPress={() => setOpenDocument(TERMS_OF_USE)}
+                    accessibilityRole="link"
+                  >
+                    Termos de Uso
+                  </Text>
+                  <Text onPress={() => setAcceptedTerms((value) => !value)}> e </Text>
+                  <Text
+                    style={styles.termsLink}
+                    onPress={() => setOpenDocument(PRIVACY_POLICY)}
+                    accessibilityRole="link"
+                  >
+                    Política de Privacidade
+                  </Text>
+                </Text>
+              </View>
             </View>
 
             {error ? (
@@ -222,6 +260,7 @@ export function RegisterScreen({ onBack }: Props) {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <LegalModal document={openDocument} onClose={() => setOpenDocument(null)} />
     </SafeAreaView>
   );
 }
@@ -241,6 +280,21 @@ const styles = StyleSheet.create({
   rule: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ruleText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted },
   ruleOk: { color: colors.accentDark },
+  terms: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 12 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    marginTop: 1,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { borderColor: colors.accent, backgroundColor: colors.accent },
+  termsText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.muted },
+  termsLink: { fontFamily: fonts.medium, color: colors.accent },
   feedback: { marginTop: 24, gap: 12 },
   toLogin: { alignSelf: 'center' },
   link: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.accent },
