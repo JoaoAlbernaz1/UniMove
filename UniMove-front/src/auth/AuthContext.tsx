@@ -16,7 +16,10 @@ type Status = 'loading' | 'signedOut' | 'signedIn';
 
 type AuthContextValue = {
   status: Status;
+  // true logo depois do cadastro, para a Home mostrar a confirmação do UC01.
+  justRegistered: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (input: authApi.RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
   // Chamada autenticada: renova o access token (15 min) sozinha quando expira.
   authApi: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -24,8 +27,15 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+export class AccountCreatedError extends Error {
+  constructor() {
+    super('Sua conta foi criada, mas não conseguimos entrar agora. Volte ao login e entre com seu e-mail e senha.');
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
+  const [justRegistered, setJustRegistered] = useState(false);
   const tokensRef = useRef<authApi.Tokens | null>(null);
   // O backend gira o refresh token a cada uso e revoga o anterior. Duas renovações
   // em paralelo com o mesmo token derrubariam a sessão, então só uma roda por vez.
@@ -73,7 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [storeTokens],
   );
 
+  // UC01 passos 12–13: depois de salvar o usuário, entra direto na Home.
+  const signUp = useCallback(
+    async (input: authApi.RegisterInput) => {
+      await authApi.register(input);
+      let tokens: authApi.Tokens;
+      try {
+        tokens = await authApi.login(input.institutionalEmail, input.password);
+      } catch {
+        // A conta já existe; tentar cadastrar de novo daria "já cadastrado".
+        throw new AccountCreatedError();
+      }
+      setJustRegistered(true);
+      await storeTokens(tokens);
+    },
+    [storeTokens],
+  );
+
   const signOut = useCallback(async () => {
+    setJustRegistered(false);
     const refreshToken = tokensRef.current?.refreshToken;
     await storeTokens(null);
     if (refreshToken) await authApi.logout(refreshToken).catch(() => {});
@@ -95,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ status, signIn, signOut, authApi: authenticatedApi }),
-    [status, signIn, signOut, authenticatedApi],
+    () => ({ status, justRegistered, signIn, signUp, signOut, authApi: authenticatedApi }),
+    [status, justRegistered, signIn, signUp, signOut, authenticatedApi],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

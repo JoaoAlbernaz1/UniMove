@@ -3,11 +3,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Me } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
+import { Message } from '../components/Message';
 import { colors, fonts, radius } from '../theme';
 
 // Tela provisória: só confirma que o login funcionou de ponta a ponta.
 export function HomeScreen() {
-  const { authApi, signOut } = useAuth();
+  const { authApi, signOut, justRegistered } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,6 +21,11 @@ export function HomeScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.content}>
+        {justRegistered ? (
+          <View style={styles.banner}>
+            <Message tone="success">Cadastro realizado com sucesso!</Message>
+          </View>
+        ) : null}
         {me ? (
           <>
             <Text style={styles.title}>Olá, {me.fullName.split(' ')[0]}!</Text>
@@ -41,6 +47,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+  banner: { alignSelf: 'stretch', marginBottom: 16 },
   title: { fontFamily: fonts.bold, fontSize: 24, color: colors.primary },
   subtitle: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted },
   button: {

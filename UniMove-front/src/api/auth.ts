@@ -11,6 +11,17 @@ export function login(email: string, password: string) {
   });
 }
 
+export type RegisterInput = {
+  fullName: string;
+  cpf: string;
+  institutionalEmail: string;
+  password: string;
+};
+
+export function register(input: RegisterInput) {
+  return api<Me>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+}
+
 export function refresh(refreshToken: string) {
   return api<Tokens>('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) });
 }

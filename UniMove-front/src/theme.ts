@@ -3,6 +3,8 @@
 export const colors = {
   primary: '#101828',
   accent: '#22C55E',
+  accentDark: '#16A34A',
+  accentBg: '#F0FDF4',
   background: '#F8FAFC',
   foreground: '#1E293B',
   muted: '#64748B',
