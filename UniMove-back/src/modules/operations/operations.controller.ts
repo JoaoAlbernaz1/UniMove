@@ -12,6 +12,7 @@ import {
   UserStatus,
 } from '../../generated/prisma/enums';
 import { NotificationService } from '../notifications/notifications.service';
+import { ApiBearerAuth } from '@nestjs/swagger';
 
 class IncidentDto {
   @IsUUID() rideId!: string;
@@ -53,7 +54,7 @@ export class HistoryController {
     });
   }
 }
-
+@ApiBearerAuth()
 @Controller('admin')
 @Roles(RoleName.ADMIN)
 export class AdminController {
