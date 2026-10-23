@@ -37,12 +37,16 @@ class MyRidesQuery extends PaginationDto {
 
 @Controller('rides')
 export class RidesController {
+  // Removido o 'ridesService: any' daqui, pois usaremos o prisma diretamente
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly notifications: NotificationService,
   ) {}
-  @Post(':rideId/requests') async request(
+
+  @Post(':rideId/requests') 
+  async request(
     @CurrentUser() user: AuthUser,
     @Param('rideId') rideId: string,
     @Body() dto: RequestRideDto,
@@ -53,10 +57,12 @@ export class RidesController {
     if (ride.driverId === user.id)
       throw new ConflictException('Motorista não pode solicitar a própria carona.');
     if (ride.availableSeats < dto.seats) throw new ConflictException('Não há vagas disponíveis.');
+    
     const duplicate = await this.prisma.rideRequest.findFirst({
       where: { rideId, passengerId: user.id, status: RideRequestStatus.PENDING },
     });
     if (duplicate) throw new ConflictException('Já existe solicitação pendente para esta carona.');
+    
     const request = await this.prisma.rideRequest.create({
       data: {
         rideId,
@@ -67,6 +73,7 @@ export class RidesController {
         ),
       },
     });
+    
     await this.notifications.create({
       userId: ride.driverId,
       type: NotificationType.RIDE_REQUEST_RECEIVED,
@@ -76,15 +83,19 @@ export class RidesController {
       resourceId: request.id,
       metadata: { rideId, passengerId: user.id },
     });
+    
     return request;
   }
-  @Get('me') async mine(@CurrentUser() user: AuthUser, @Query() query: MyRidesQuery) {
+
+  @Get('me') 
+  async mine(@CurrentUser() user: AuthUser, @Query() query: MyRidesQuery) {
     const where =
       query.role === 'driver'
         ? { driverId: user.id }
         : query.role === 'passenger'
           ? { reservations: { some: { passengerId: user.id } } }
           : { OR: [{ driverId: user.id }, { reservations: { some: { passengerId: user.id } } }] };
+    
     return this.prisma.ride.findMany({
       where: { ...where, ...(query.status ? { status: query.status } : {}) },
       include: {
@@ -98,7 +109,44 @@ export class RidesController {
       take: query.limit,
     });
   }
-  @Post(':id/start') async start(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+
+  // NOVA ROTA CORRIGIDA: Buscar todas as caronas disponíveis
+  @Get()
+  async findAll() {
+    return this.prisma.ride.findMany({
+      where: {
+        status: {
+          in: [RideStatus.OPEN, RideStatus.SCHEDULED],
+        },
+        departureAt: {
+          gt: new Date(), // Apenas caronas futuras
+        },
+        availableSeats: {
+          gt: 0, // Apenas com vagas disponíveis
+        }
+      },
+      include: {
+        driver: {
+          select: { id: true, fullName: true },
+        },
+        vehicle: {
+          select: { brand: true, model: true },
+        },
+        originLocation: {
+          select: { name: true },
+        },
+        destinationLocation: {
+          select: { name: true },
+        },
+      },
+      orderBy: {
+        departureAt: 'asc', // Ordena da mais próxima para a mais distante
+      },
+    });
+  }
+
+  @Post(':id/start') 
+  async start(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.transition(
       id,
       user.id,
@@ -108,7 +156,9 @@ export class RidesController {
       NotificationType.RIDE_STARTED,
     );
   }
-  @Post(':id/complete') async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+
+  @Post(':id/complete') 
+  async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     const ride = await this.transition(
       id,
       user.id,
@@ -123,7 +173,9 @@ export class RidesController {
     });
     return ride;
   }
-  @Post(':id/cancel') async cancel(
+
+  @Post(':id/cancel') 
+  async cancel(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: CancelDto,
@@ -133,18 +185,23 @@ export class RidesController {
       if (!ride) throw new NotFoundException('Carona não encontrada.');
       if (([RideStatus.COMPLETED, RideStatus.CANCELLED] as RideStatus[]).includes(ride.status))
         throw new ConflictException('Estado não permite cancelamento.');
+      
       const updated = await tx.ride.update({
         where: { id },
         data: { status: RideStatus.CANCELLED, cancelledAt: new Date() },
       });
+      
       const reservations = await tx.rideReservation.findMany({
         where: { rideId: id, status: ReservationStatus.CONFIRMED },
       });
+      
       await tx.rideReservation.updateMany({
         where: { rideId: id, status: ReservationStatus.CONFIRMED },
         data: { status: ReservationStatus.CANCELLED, cancelledAt: new Date() },
       });
+      
       await tx.cancellation.create({ data: { rideId: id, cancelledByUserId: user.id, ...dto } });
+      
       if (reservations.length)
         await this.notifications.createMany(
           reservations.map((r) => ({
@@ -157,9 +214,11 @@ export class RidesController {
           })),
           tx,
         );
+      
       return updated;
     });
   }
+
   private async transition(
     id: string,
     driverId: string,
@@ -174,14 +233,17 @@ export class RidesController {
       if (ride.status === status) return ride;
       if (!allowed.includes(ride.status))
         throw new ConflictException('Transição de estado inválida.');
+      
       const updated = await tx.ride.update({
         where: { id },
         data: { status, [dateField]: new Date() },
       });
+      
       const passengers = await tx.rideReservation.findMany({
         where: { rideId: id, status: ReservationStatus.CONFIRMED },
         select: { passengerId: true },
       });
+      
       if (passengers.length)
         await this.notifications.createMany(
           passengers.map((p) => ({
@@ -197,6 +259,7 @@ export class RidesController {
           })),
           tx,
         );
+      
       if (status === RideStatus.COMPLETED) {
         await this.notifications.create(
           {
@@ -215,12 +278,14 @@ export class RidesController {
   }
 }
 
+// O ReservationsController pode continuar exatamente do jeito que estava
 @Controller('reservations')
 export class ReservationsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
   ) {}
+  
   @Post(':id/cancel') @HttpCode(200) async cancel(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

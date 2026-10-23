@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
+import { SearchRideScreen } from './src/screens/SearchRideScreen';
 import { colors } from './src/theme';
 
 export default function App() {
@@ -31,9 +32,16 @@ export default function App() {
 function Root() {
   const { status } = useAuth();
   const [registering, setRegistering] = useState(false);
+  
+  // Novo estado que respeita a sua estrutura de rotas para a área logada
+  const [loggedScreen, setLoggedScreen] = useState<'Home' | 'SearchRide'>('Home');
+
   // Quem sai da conta volta para o login, não para o cadastro.
   useEffect(() => {
-    if (status === 'signedIn') setRegistering(false);
+    if (status === 'signedIn') {
+      setRegistering(false);
+      setLoggedScreen('Home'); // Garante que volta pra Home ao fazer login
+    }
   }, [status]);
 
   if (status === 'loading') {
@@ -43,7 +51,15 @@ function Root() {
       </View>
     );
   }
-  if (status === 'signedIn') return <HomeScreen />;
+  
+  // Renderização condicional da área logada
+  if (status === 'signedIn') {
+    if (loggedScreen === 'SearchRide') {
+      return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
+    }
+    return <HomeScreen onNavigateSearch={() => setLoggedScreen('SearchRide')} />;
+  }
+  
   return registering ? (
     <RegisterScreen onBack={() => setRegistering(false)} />
   ) : (

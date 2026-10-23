@@ -52,7 +52,8 @@ const statusLabels: Record<Ride['status'], string> = {
   CANCELLED: 'Cancelada',
 };
 
-export function HomeScreen() {
+// Aqui recebemos a função de navegação via props, no seu padrão
+export function HomeScreen({ onNavigateSearch }: { onNavigateSearch?: () => void }) {
   const { authApi, signOut, justRegistered } = useAuth();
   const [me, setMe] = useState<HomeProfile | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
@@ -198,7 +199,7 @@ export function HomeScreen() {
 
             <View style={styles.actions}>
               <Pressable
-                onPress={() => showComingSoon('Buscar carona')}
+                onPress={onNavigateSearch} 
                 style={({ pressed }) => [styles.actionCard, styles.searchCard, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
