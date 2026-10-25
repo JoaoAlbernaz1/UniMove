@@ -8,6 +8,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { HealthModule } from './modules/health/health.module';
 import { MatchingModule } from './modules/matching/matching.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -25,6 +26,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrismaModule,
     AuthModule,
+    ChatModule,
     HealthModule,
     UsersModule,
     VehiclesModule,

@@ -100,6 +100,8 @@ model User {
   ratingsGiven       Rating[]          @relation("RatingReviewer")
   ratingsReceived    Rating[]          @relation("RatingReviewed")
   notifications      Notification[]
+  messageConversations MessageConversation[] @relation("ConversationPassenger")
+  sentChatMessages   ChatMessage[]
   incidentsReported  Incident[]        @relation("IncidentReporter")
   incidentsAgainst   Incident[]        @relation("IncidentReportedUser")
   cancellations      Cancellation[]
@@ -234,6 +236,7 @@ model Ride {
   destinationLocation   Location          @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
   requests              RideRequest[]
   reservations          RideReservation[]
+  conversations         MessageConversation[]
   cancellations         Cancellation[]
   ratings               Rating[]
   incidents             Incident[]
@@ -279,6 +282,34 @@ model RideReservation {
   @@index([rideId, status])
   @@index([passengerId, status])
   @@map("ride_reservations")
+}
+
+model MessageConversation {
+  id          String        @id @default(uuid()) @db.Uuid
+  rideId      String        @map("ride_id") @db.Uuid
+  passengerId String        @map("passenger_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  ride        Ride          @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  passenger   User          @relation("ConversationPassenger", fields: [passengerId], references: [id], onDelete: Restrict)
+  messages    ChatMessage[]
+
+  @@unique([rideId, passengerId])
+  @@index([passengerId, updatedAt])
+  @@map("message_conversations")
+}
+
+model ChatMessage {
+  id             String              @id @default(uuid()) @db.Uuid
+  conversationId String              @map("conversation_id") @db.Uuid
+  senderId       String              @map("sender_id") @db.Uuid
+  content        String              @db.VarChar(2000)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  conversation   MessageConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User                @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt, id])
+  @@map("chat_messages")
 }
 
 model Cancellation {
