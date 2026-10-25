@@ -60,6 +60,13 @@ exporta e publica. Login e cadastro falham nesse modo, porque a API continua em 
 
 A Home é provisória.
 
+**Mensagens entre motorista e passageiro**
+
+- A caixa de entrada é acessada pelo atalho **Mensagens** na Home.
+- Conversas são privadas por carona e passageiro e só podem ser iniciadas por participantes com reserva confirmada ou concluída.
+- O backend persiste conversas e mensagens no PostgreSQL; a tela consulta mensagens novas a cada quatro segundos enquanto aberta.
+- Para habilitar o recurso em um banco existente, aplique a migration do backend com `npm run prisma:migrate` antes de iniciar a API.
+
 ## Estrutura
 
 ```

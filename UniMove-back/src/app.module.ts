@@ -10,6 +10,7 @@ import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { MatchingModule } from './modules/matching/matching.module';
+import { MessagesModule } from './modules/messages/messages.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OperationsModule } from './modules/operations/operations.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
@@ -30,6 +31,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     VehiclesModule,
     RouteTemplatesModule,
     MatchingModule,
+    MessagesModule,
     RidesModule,
     RideRequestsModule,
     RatingsModule,

@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
+import { MessagesScreen } from './src/screens/MessagesScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { SearchRideScreen } from './src/screens/SearchRideScreen';
 import { colors } from './src/theme';
@@ -34,7 +35,7 @@ function Root() {
   const [registering, setRegistering] = useState(false);
   
   // Novo estado que respeita a sua estrutura de rotas para a área logada
-  const [loggedScreen, setLoggedScreen] = useState<'Home' | 'SearchRide'>('Home');
+  const [loggedScreen, setLoggedScreen] = useState<'Home' | 'SearchRide' | 'Messages'>('Home');
 
   // Quem sai da conta volta para o login, não para o cadastro.
   useEffect(() => {
@@ -57,7 +58,15 @@ function Root() {
     if (loggedScreen === 'SearchRide') {
       return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
     }
-    return <HomeScreen onNavigateSearch={() => setLoggedScreen('SearchRide')} />;
+    if (loggedScreen === 'Messages') {
+      return <MessagesScreen onBack={() => setLoggedScreen('Home')} />;
+    }
+    return (
+      <HomeScreen
+        onNavigateSearch={() => setLoggedScreen('SearchRide')}
+        onNavigateMessages={() => setLoggedScreen('Messages')}
+      />
+    );
   }
   
   return registering ? (

@@ -82,29 +82,31 @@ enum IncidentStatus {
 }
 
 model User {
-  id                 String            @id @default(uuid()) @db.Uuid
-  fullName           String            @map("full_name")
-  cpf                String            @unique
-  institutionalEmail String            @unique @map("institutional_email")
-  passwordHash       String            @map("password_hash")
-  status             UserStatus        @default(ACTIVE)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt          DateTime?         @map("deleted_at") @db.Timestamptz(3)
-  roles              UserRole[]
-  vehicles           Vehicle[]
-  routeTemplates     RouteTemplate[]
-  drivenRides        Ride[]            @relation("RideDriver")
-  rideRequests       RideRequest[]
-  reservations       RideReservation[]
-  ratingsGiven       Rating[]          @relation("RatingReviewer")
-  ratingsReceived    Rating[]          @relation("RatingReviewed")
-  notifications      Notification[]
-  incidentsReported  Incident[]        @relation("IncidentReporter")
-  incidentsAgainst   Incident[]        @relation("IncidentReportedUser")
-  cancellations      Cancellation[]
-  auditLogs          AuditLog[]
-  refreshSessions    RefreshSession[]
+  id                     String                @id @default(uuid()) @db.Uuid
+  fullName               String                @map("full_name")
+  cpf                    String                @unique
+  institutionalEmail     String                @unique @map("institutional_email")
+  passwordHash           String                @map("password_hash")
+  status                 UserStatus            @default(ACTIVE)
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt              DateTime?             @map("deleted_at") @db.Timestamptz(3)
+  roles                  UserRole[]
+  vehicles               Vehicle[]
+  routeTemplates         RouteTemplate[]
+  drivenRides            Ride[]                @relation("RideDriver")
+  rideRequests           RideRequest[]
+  reservations           RideReservation[]
+  ratingsGiven           Rating[]              @relation("RatingReviewer")
+  ratingsReceived        Rating[]              @relation("RatingReviewed")
+  notifications          Notification[]
+  incidentsReported      Incident[]            @relation("IncidentReporter")
+  incidentsAgainst       Incident[]            @relation("IncidentReportedUser")
+  cancellations          Cancellation[]
+  auditLogs              AuditLog[]
+  refreshSessions        RefreshSession[]
+  passengerConversations MessageConversation[] @relation("ConversationPassenger")
+  sentMessages           ChatMessage[]
 
   @@map("users")
 }
@@ -212,31 +214,32 @@ model RouteTemplateWeekday {
 }
 
 model Ride {
-  id                    String            @id @default(uuid()) @db.Uuid
-  routeTemplateId       String            @map("route_template_id") @db.Uuid
-  driverId              String            @map("driver_id") @db.Uuid
-  vehicleId             String            @map("vehicle_id") @db.Uuid
-  originLocationId      String            @map("origin_location_id") @db.Uuid
-  destinationLocationId String            @map("destination_location_id") @db.Uuid
-  departureAt           DateTime          @map("departure_at") @db.Timestamptz(3)
-  totalSeats            Int               @map("total_seats")
-  availableSeats        Int               @map("available_seats")
-  status                RideStatus        @default(OPEN)
-  startedAt             DateTime?         @map("started_at") @db.Timestamptz(3)
-  completedAt           DateTime?         @map("completed_at") @db.Timestamptz(3)
-  cancelledAt           DateTime?         @map("cancelled_at") @db.Timestamptz(3)
-  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  routeTemplate         RouteTemplate     @relation(fields: [routeTemplateId], references: [id], onDelete: Restrict)
-  driver                User              @relation("RideDriver", fields: [driverId], references: [id], onDelete: Restrict)
-  vehicle               Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  originLocation        Location          @relation("RideOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
-  destinationLocation   Location          @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  id                    String                @id @default(uuid()) @db.Uuid
+  routeTemplateId       String                @map("route_template_id") @db.Uuid
+  driverId              String                @map("driver_id") @db.Uuid
+  vehicleId             String                @map("vehicle_id") @db.Uuid
+  originLocationId      String                @map("origin_location_id") @db.Uuid
+  destinationLocationId String                @map("destination_location_id") @db.Uuid
+  departureAt           DateTime              @map("departure_at") @db.Timestamptz(3)
+  totalSeats            Int                   @map("total_seats")
+  availableSeats        Int                   @map("available_seats")
+  status                RideStatus            @default(OPEN)
+  startedAt             DateTime?             @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime?             @map("completed_at") @db.Timestamptz(3)
+  cancelledAt           DateTime?             @map("cancelled_at") @db.Timestamptz(3)
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  routeTemplate         RouteTemplate         @relation(fields: [routeTemplateId], references: [id], onDelete: Restrict)
+  driver                User                  @relation("RideDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle               Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  originLocation        Location              @relation("RideOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
+  destinationLocation   Location              @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
   requests              RideRequest[]
   reservations          RideReservation[]
   cancellations         Cancellation[]
   ratings               Rating[]
   incidents             Incident[]
+  conversations         MessageConversation[]
 
   @@unique([routeTemplateId, departureAt])
   @@index([status, departureAt])
@@ -328,6 +331,34 @@ model Notification {
 
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+model MessageConversation {
+  id          String        @id @default(uuid()) @db.Uuid
+  rideId      String        @map("ride_id") @db.Uuid
+  passengerId String        @map("passenger_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  ride        Ride          @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  passenger   User          @relation("ConversationPassenger", fields: [passengerId], references: [id], onDelete: Restrict)
+  messages    ChatMessage[]
+
+  @@unique([rideId, passengerId])
+  @@index([passengerId, updatedAt])
+  @@map("message_conversations")
+}
+
+model ChatMessage {
+  id             String              @id @default(uuid()) @db.Uuid
+  conversationId String              @map("conversation_id") @db.Uuid
+  senderId       String              @map("sender_id") @db.Uuid
+  content        String              @db.VarChar(2000)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  conversation   MessageConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User                @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt, id])
+  @@map("chat_messages")
 }
 
 model Incident {

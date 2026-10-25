@@ -53,7 +53,13 @@ const statusLabels: Record<Ride['status'], string> = {
 };
 
 // Aqui recebemos a função de navegação via props, no seu padrão
-export function HomeScreen({ onNavigateSearch }: { onNavigateSearch?: () => void }) {
+export function HomeScreen({
+  onNavigateSearch,
+  onNavigateMessages,
+}: {
+  onNavigateSearch?: () => void;
+  onNavigateMessages?: () => void;
+}) {
   const { authApi, signOut, justRegistered } = useAuth();
   const [me, setMe] = useState<HomeProfile | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
@@ -235,7 +241,7 @@ export function HomeScreen({ onNavigateSearch }: { onNavigateSearch?: () => void
               <Text style={styles.sectionTitle}>Acesso rápido</Text>
               <View style={styles.quickGrid}>
                 <Pressable
-                  onPress={() => showComingSoon('Mensagens', 'O chat ainda não está disponível na API V1.')}
+                  onPress={onNavigateMessages}
                   style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
                   accessibilityRole="button"
                 >

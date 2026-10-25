@@ -17,4 +17,8 @@ O backend usa UTC e as rotas recorrentes registram seu timezone. `.env` nunca de
 
 As notificações são persistidas exclusivamente no PostgreSQL e consultadas pelo Flutter através da API REST. A V1 não usa SMTP, Firebase, push notifications ou WebSocket. E-mail e push estão planejados para a V2.
 
-Chat/Messages será implementado posteriormente. A infraestrutura de notificações internas já suporta o tipo `MESSAGE_RECEIVED`.
+As conversas são privadas entre o motorista e cada passageiro com reserva confirmada ou concluída. Mensagens são persistidas no PostgreSQL e consultadas pela API REST autenticada; a notificação interna `MESSAGE_RECEIVED` avisa o outro participante.
+
+Endpoints: `GET /api/v1/messages/conversations`, `GET /api/v1/messages/available-participants`, `POST /api/v1/rides/:rideId/conversations`, `GET /api/v1/messages/conversations/:id/messages` e `POST /api/v1/messages/conversations/:id/messages`. As mensagens aceitam até 2000 caracteres.
+
+Antes de testar, aplique a migration com `npm run prisma:migrate` e use contas reais com uma reserva confirmada ou concluída. Não há usuários de demonstração criados pelo seed.
