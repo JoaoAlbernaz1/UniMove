@@ -110,6 +110,16 @@ export class RideRequestsController {
             seats: request.seatsRequested,
           },
         });
+        await tx.messageConversation.upsert({
+          where: {
+            rideId_passengerId: {
+              rideId: request.rideId,
+              passengerId: request.passengerId,
+            },
+          },
+          create: { rideId: request.rideId, passengerId: request.passengerId },
+          update: {},
+        });
         await this.notifications.create(
           {
             userId: request.passengerId,

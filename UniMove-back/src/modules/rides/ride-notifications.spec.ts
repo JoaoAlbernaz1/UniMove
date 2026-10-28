@@ -76,6 +76,7 @@ describe('Ride event notifications', () => {
         create: jest.fn().mockResolvedValue({ id: 'reservation-id' }),
         findUnique: jest.fn(),
       },
+      messageConversation: { upsert: jest.fn().mockResolvedValue({ id: 'conversation-id' }) },
       $queryRaw: jest.fn(),
     };
     const prisma = {
@@ -94,6 +95,11 @@ describe('Ride event notifications', () => {
       }),
       tx,
     );
+    expect(tx.messageConversation.upsert).toHaveBeenCalledWith({
+      where: { rideId_passengerId: { rideId: 'ride-id', passengerId: passenger.id } },
+      create: { rideId: 'ride-id', passengerId: passenger.id },
+      update: {},
+    });
   });
 
   it('notifies the passenger when the driver rejects a request', async () => {

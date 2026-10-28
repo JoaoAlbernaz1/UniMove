@@ -12,6 +12,13 @@ Visual segue o protótipo no Figma Make "UNICARONA Versão nova"; os tokens est�
 4. `npm run web` abre em `http://localhost:8080` — a porta 8080 já está liberada no `CORS_ORIGINS` do backend.
    Para celular, `npm start` e leia o QR code com o Expo Go.
 
+### Mensagens
+
+Em **Mensagens**, o motorista e o passageiro podem iniciar uma conversa depois que a reserva
+for confirmada. O histórico continua disponível após a conclusão da viagem; novas mensagens
+só podem ser enviadas enquanto a reserva estiver confirmada. A tela consulta mensagens pela
+API REST a cada quatro segundos.
+
 ### Celular sem acesso à máquina (EAS Update)
 
 Quando o celular não alcança o computador (rede corporativa, sem túnel), publique o
