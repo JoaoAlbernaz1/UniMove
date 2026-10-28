@@ -53,7 +53,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Motorista de Teste\",\n  \"cpf\": \"{{driverCpf}}\",\n  \"institutionalEmail\": \"{{driverEmail}}\",\n  \"password\": \"{{driverPassword}}\"\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Motorista de Teste\",\n  \"cpf\": \"{{driverCpf}}\",\n  \"institutionalEmail\": \"{{driverEmail}}\",\n  \"password\": \"{{driverPassword}}\",\n  \"passwordConfirmation\": \"{{driverPassword}}\",\n  \"acceptedTerms\": true,\n  \"termsVersion\": \"2026-10-28-v1\",\n  \"privacyPolicyVersion\": \"2026-10-28-v1\"\n}" },
             "url": "{{baseUrl}}/api/v1/auth/register"
           },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('driverId', pm.response.json().id);"] } }]
@@ -73,7 +73,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Passageiro de Teste\",\n  \"cpf\": \"{{passengerCpf}}\",\n  \"institutionalEmail\": \"{{passengerEmail}}\",\n  \"password\": \"{{passengerPassword}}\"\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Passageiro de Teste\",\n  \"cpf\": \"{{passengerCpf}}\",\n  \"institutionalEmail\": \"{{passengerEmail}}\",\n  \"password\": \"{{passengerPassword}}\",\n  \"passwordConfirmation\": \"{{passengerPassword}}\",\n  \"acceptedTerms\": true,\n  \"termsVersion\": \"2026-10-28-v1\",\n  \"privacyPolicyVersion\": \"2026-10-28-v1\"\n}" },
             "url": "{{baseUrl}}/api/v1/auth/register"
           },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 201) pm.collectionVariables.set('passengerId', pm.response.json().id);"] } }]

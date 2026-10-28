@@ -31,7 +31,11 @@ describe('AuthService registration', () => {
     fullName: 'Maria Souza',
     cpf: '52998224725',
     institutionalEmail: 'maria@ucb.edu.br',
-    password: 'uma-senha-longa',
+    password: 'Senha123!',
+    passwordConfirmation: 'Senha123!',
+    acceptedTerms: true,
+    termsVersion: '2026-10-28-v1',
+    privacyPolicyVersion: '2026-10-28-v1',
   };
 
   beforeEach(() => {
@@ -50,7 +54,12 @@ describe('AuthService registration', () => {
     expect(user.status).toBe(UserStatus.ACTIVE);
     expect(userCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: UserStatus.ACTIVE }),
+        data: expect.objectContaining({
+          status: UserStatus.ACTIVE,
+          termsAcceptedAt: expect.any(Date),
+          termsVersion: dto.termsVersion,
+          privacyPolicyVersion: dto.privacyPolicyVersion,
+        }),
       }),
     );
   });

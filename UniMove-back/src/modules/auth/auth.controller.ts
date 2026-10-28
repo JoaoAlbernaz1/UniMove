@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Public } from '../../common/decorators/auth.decorators';
@@ -10,6 +10,9 @@ import { LoginDto, RefreshDto, RegisterDto } from './dto/auth.dto';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+  @Get('registration-policy') policy() {
+    return this.auth.registrationPolicy();
+  }
   @Post('register') register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }

@@ -5,8 +5,14 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -15,11 +21,17 @@ import { MessagesScreen } from './src/screens/MessagesScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { SearchRideScreen } from './src/screens/SearchRideScreen';
+import { OfferRideScreen } from './src/screens/OfferRideScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
+import { AdvertisementBar } from './src/components/AdvertisementBar';
 
 export default function App() {
-  const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_700Bold });
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_700Bold,
+  });
   if (!fontsLoaded) return null;
 
   return (
@@ -34,21 +46,6 @@ export default function App() {
 
 function Root() {
   const { status } = useAuth();
-  const [registering, setRegistering] = useState(false);
-  
-  // Novo estado que respeita a sua estrutura de rotas para a área logada
-  const [loggedScreen, setLoggedScreen] = useState<'Home' | 'SearchRide' | 'Messages' | 'Chat'>('Home');
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // Quem sai da conta volta para o login, não para o cadastro.
-  useEffect(() => {
-    if (status === 'signedIn') {
-      setRegistering(false);
-      setLoggedScreen('Home'); // Garante que volta pra Home ao fazer login
-    }
-  }, [status]);
-
   if (status === 'loading') {
     return (
       <View style={styles.loading}>
@@ -56,9 +53,27 @@ function Root() {
       </View>
     );
   }
-  
-  // Renderização condicional da área logada
-  if (status === 'signedIn') {
+  return status === 'signedIn' ? <SignedInApp /> : <SignedOutApp />;
+}
+
+function SignedOutApp() {
+  const [registering, setRegistering] = useState(false);
+  return registering ? (
+    <RegisterScreen onBack={() => setRegistering(false)} />
+  ) : (
+    <LoginScreen onRegister={() => setRegistering(true)} />
+  );
+}
+
+function SignedInApp() {
+  const [loggedScreen, setLoggedScreen] = useState<
+    'Home' | 'SearchRide' | 'OfferRide' | 'Messages' | 'Chat'
+  >('Home');
+  const [activeConversation, setActiveConversation] =
+    useState<Conversation | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  function renderScreen() {
     if (loggedScreen === 'Chat' && activeConversation && userId) {
       return (
         <ChatScreen
@@ -80,25 +95,33 @@ function Root() {
         />
       );
     }
-    if (loggedScreen === 'SearchRide') {
+    if (loggedScreen === 'SearchRide')
       return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
-    }
+    if (loggedScreen === 'OfferRide')
+      return <OfferRideScreen onBack={() => setLoggedScreen('Home')} />;
     return (
       <HomeScreen
         onNavigateSearch={() => setLoggedScreen('SearchRide')}
+        onNavigateOffer={() => setLoggedScreen('OfferRide')}
         onNavigateMessages={() => setLoggedScreen('Messages')}
       />
     );
   }
-  
-  return registering ? (
-    <RegisterScreen onBack={() => setRegistering(false)} />
-  ) : (
-    <LoginScreen onRegister={() => setRegistering(true)} />
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.userLayout}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.screen}>{renderScreen()}</View>
+      <AdvertisementBar />
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  userLayout: { flex: 1, backgroundColor: colors.primary },
+  screen: { flex: 1 },
   loading: {
     flex: 1,
     alignItems: 'center',

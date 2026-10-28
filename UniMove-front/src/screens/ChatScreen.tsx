@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -106,10 +104,7 @@ export function ChatScreen({
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <KeyboardAvoidingView
-        style={styles.keyboard}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <View style={styles.keyboard}>
         <View style={styles.header}>
           <Pressable
             onPress={onBack}
@@ -203,7 +198,7 @@ export function ChatScreen({
             Reserva encerrada. O histórico desta conversa continua disponível.
           </Text>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

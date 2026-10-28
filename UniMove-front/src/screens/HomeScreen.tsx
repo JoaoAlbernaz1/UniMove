@@ -41,7 +41,8 @@ type Ride = {
   originLocation: { name: string };
   destinationLocation: { name: string };
   driver: { id: string; fullName: string };
-  reservations: { passengerId: string; seats: number; status: string }[];
+  participationRole: 'DRIVER' | 'PASSENGER';
+  reservedSeats: number;
 };
 
 const statusLabels: Record<Ride['status'], string> = {
@@ -55,66 +56,61 @@ const statusLabels: Record<Ride['status'], string> = {
 // Aqui recebemos a função de navegação via props, no seu padrão
 export function HomeScreen({
   onNavigateSearch,
+  onNavigateOffer,
   onNavigateMessages,
 }: {
   onNavigateSearch?: () => void;
+  onNavigateOffer?: () => void;
   onNavigateMessages?: () => void;
 }) {
   const { authApi, signOut, justRegistered } = useAuth();
   const [me, setMe] = useState<HomeProfile | null>(null);
-  const [rides, setRides] = useState<Ride[]>([]);
+  const [upcomingRides, setUpcomingRides] = useState<Ride[]>([]);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [ridesError, setRidesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadHome = useCallback(async (pullToRefresh = false) => {
-    if (pullToRefresh) setRefreshing(true);
-    else setLoading(true);
-
-    const [profileResult, ridesResult] = await Promise.allSettled([
-      authApi<HomeProfile>('/users/me'),
-      authApi<Ride[]>('/rides/me?limit=20'),
-    ]);
-
-    if (profileResult.status === 'fulfilled') {
-      setMe(profileResult.value);
-      setProfileError(null);
-    } else {
-      setProfileError(profileResult.reason instanceof Error
-        ? profileResult.reason.message
-        : 'Não foi possível carregar seus dados.');
-    }
-
-    if (ridesResult.status === 'fulfilled') {
-      setRides(ridesResult.value);
-      setRidesError(null);
-    } else {
-      setRidesError(ridesResult.reason instanceof Error
-        ? ridesResult.reason.message
-        : 'Não foi possível carregar suas caronas.');
-    }
-
-    setLoading(false);
-    setRefreshing(false);
-  }, [authApi]);
+  const loadHome = useCallback(
+    () =>
+      Promise.allSettled([
+        authApi<HomeProfile>('/users/me'),
+        authApi<Ride[]>('/rides/upcoming'),
+      ]).then(([profileResult, ridesResult]) => {
+        if (profileResult.status === 'fulfilled') {
+          setMe(profileResult.value);
+          setProfileError(null);
+        } else {
+          setProfileError(
+            profileResult.reason instanceof Error
+              ? profileResult.reason.message
+              : 'Não foi possível carregar seus dados.',
+          );
+        }
+        if (ridesResult.status === 'fulfilled') {
+          setUpcomingRides(ridesResult.value);
+          setRidesError(null);
+        } else {
+          setRidesError(
+            ridesResult.reason instanceof Error
+              ? ridesResult.reason.message
+              : 'Não foi possível carregar suas caronas.',
+          );
+        }
+        setLoading(false);
+        setRefreshing(false);
+      }),
+    [authApi],
+  );
 
   useEffect(() => {
     void loadHome();
   }, [loadHome]);
 
-  const upcomingRides = rides
-    .filter((ride) =>
-      (ride.status === 'OPEN' || ride.status === 'SCHEDULED') &&
-      new Date(ride.departureAt).getTime() >= Date.now() &&
-      (ride.driver.id === me?.id || ride.reservations.some((reservation) =>
-        reservation.passengerId === me?.id && reservation.status === 'CONFIRMED',
-      )),
-    )
-    .sort((a, b) => new Date(a.departureAt).getTime() - new Date(b.departureAt).getTime())
-    .slice(0, 3);
-
-  function showComingSoon(feature: string, description = 'Esta funcionalidade será disponibilizada em uma próxima etapa.') {
+  function showComingSoon(
+    feature: string,
+    description = 'Esta funcionalidade será disponibilizada em uma próxima etapa.',
+  ) {
     Alert.alert(feature, description);
   }
 
@@ -126,7 +122,13 @@ export function HomeScreen({
   }
 
   const firstName = me?.fullName.trim().split(/\s+/)[0];
-  const initials = me?.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  const initials = me?.fullName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -135,7 +137,10 @@ export function HomeScreen({
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void loadHome(true)}
+            onRefresh={() => {
+              setRefreshing(true);
+              void loadHome();
+            }}
             tintColor={colors.accent}
             colors={[colors.accent]}
           />
@@ -178,14 +183,19 @@ export function HomeScreen({
           <View style={styles.content}>
             {justRegistered ? (
               <View style={styles.registrationNotice}>
-                <Message tone="success">Cadastro realizado com sucesso!</Message>
+                <Message tone="success">
+                  Cadastro realizado com sucesso!
+                </Message>
               </View>
             ) : null}
 
             {profileError ? (
               <View style={styles.errorNotice}>
                 <Message tone="error">{profileError}</Message>
-                <Pressable onPress={() => void loadHome()} accessibilityRole="button">
+                <Pressable
+                  onPress={() => void loadHome()}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.retryText}>Tentar novamente</Text>
                 </Pressable>
               </View>
@@ -205,8 +215,12 @@ export function HomeScreen({
 
             <View style={styles.actions}>
               <Pressable
-                onPress={onNavigateSearch} 
-                style={({ pressed }) => [styles.actionCard, styles.searchCard, pressed && styles.pressed]}
+                onPress={onNavigateSearch}
+                style={({ pressed }) => [
+                  styles.actionCard,
+                  styles.searchCard,
+                  pressed && styles.pressed,
+                ]}
                 accessibilityRole="button"
               >
                 <View style={styles.actionIconLight}>
@@ -217,12 +231,20 @@ export function HomeScreen({
                   <Text style={styles.actionTitle}>carona</Text>
                   <Text style={styles.actionSubtitle}>Encontre uma rota</Text>
                 </View>
-                <ArrowRight size={17} color={colors.white} style={styles.actionArrow} />
+                <ArrowRight
+                  size={17}
+                  color={colors.white}
+                  style={styles.actionArrow}
+                />
               </Pressable>
 
               <Pressable
-                onPress={() => showComingSoon('Oferecer carona')}
-                style={({ pressed }) => [styles.actionCard, styles.offerCard, pressed && styles.pressed]}
+                onPress={onNavigateOffer}
+                style={({ pressed }) => [
+                  styles.actionCard,
+                  styles.offerCard,
+                  pressed && styles.pressed,
+                ]}
                 accessibilityRole="button"
               >
                 <View style={styles.actionIconDark}>
@@ -231,9 +253,15 @@ export function HomeScreen({
                 <View>
                   <Text style={styles.actionTitle}>Oferecer</Text>
                   <Text style={styles.actionTitle}>carona</Text>
-                  <Text style={styles.actionSubtitle}>Compartilhe o trajeto</Text>
+                  <Text style={styles.actionSubtitle}>
+                    Compartilhe o trajeto
+                  </Text>
                 </View>
-                <ArrowRight size={17} color={colors.white} style={styles.actionArrow} />
+                <ArrowRight
+                  size={17}
+                  color={colors.white}
+                  style={styles.actionArrow}
+                />
               </Pressable>
             </View>
 
@@ -242,7 +270,10 @@ export function HomeScreen({
               <View style={styles.quickGrid}>
                 <Pressable
                   onPress={onNavigateMessages}
-                  style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
+                  style={({ pressed }) => [
+                    styles.quickItem,
+                    pressed && styles.pressed,
+                  ]}
                   accessibilityRole="button"
                 >
                   <View style={[styles.quickIcon, styles.messagesIcon]}>
@@ -251,8 +282,16 @@ export function HomeScreen({
                   <Text style={styles.quickLabel}>Mensagens</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => showComingSoon('Histórico', 'A consulta existe na API, mas a tela ainda não foi implementada.')}
-                  style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
+                  onPress={() =>
+                    showComingSoon(
+                      'Histórico',
+                      'A consulta existe na API, mas a tela ainda não foi implementada.',
+                    )
+                  }
+                  style={({ pressed }) => [
+                    styles.quickItem,
+                    pressed && styles.pressed,
+                  ]}
                   accessibilityRole="button"
                 >
                   <View style={[styles.quickIcon, styles.historyIcon]}>
@@ -261,8 +300,16 @@ export function HomeScreen({
                   <Text style={styles.quickLabel}>Histórico</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => showComingSoon('Configurações', 'A tela ainda não foi implementada.')}
-                  style={({ pressed }) => [styles.quickItem, pressed && styles.pressed]}
+                  onPress={() =>
+                    showComingSoon(
+                      'Configurações',
+                      'A tela ainda não foi implementada.',
+                    )
+                  }
+                  style={({ pressed }) => [
+                    styles.quickItem,
+                    pressed && styles.pressed,
+                  ]}
                   accessibilityRole="button"
                 >
                   <View style={[styles.quickIcon, styles.settingsIcon]}>
@@ -275,8 +322,10 @@ export function HomeScreen({
 
             <View style={styles.sectionHeading}>
               <View>
-                <Text style={styles.sectionTitle}>Próximas caronas</Text>
-                <Text style={styles.sectionSubtitle}>Suas viagens agendadas</Text>
+                <Text style={styles.sectionTitle}>Rotas recentes</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Suas viagens agendadas
+                </Text>
               </View>
               <View style={styles.sectionIcon}>
                 <Clock3 size={18} color={colors.accentDark} />
@@ -291,7 +340,10 @@ export function HomeScreen({
             ) : ridesError ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>{ridesError}</Text>
-                <Pressable onPress={() => void loadHome()} accessibilityRole="button">
+                <Pressable
+                  onPress={() => void loadHome()}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.retryText}>Atualizar</Text>
                 </Pressable>
               </View>
@@ -307,15 +359,21 @@ export function HomeScreen({
                             .replace('.', '')}
                         </Text>
                         <Text style={styles.rideDateDay}>
-                          {new Intl.DateTimeFormat('pt-BR', { day: '2-digit' }).format(new Date(ride.departureAt))}
+                          {new Intl.DateTimeFormat('pt-BR', {
+                            day: '2-digit',
+                          }).format(new Date(ride.departureAt))}
                         </Text>
                       </View>
                       <View style={styles.rideTimeBlock}>
                         <Text style={styles.rideTime}>
-                          {new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                            .format(new Date(ride.departureAt))}
+                          {new Intl.DateTimeFormat('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }).format(new Date(ride.departureAt))}
                         </Text>
-                        <Text style={styles.rideStatus}>{statusLabels[ride.status]}</Text>
+                        <Text style={styles.rideStatus}>
+                          {statusLabels[ride.status]}
+                        </Text>
                       </View>
                       <ChevronRight size={18} color={colors.muted} />
                     </View>
@@ -327,23 +385,28 @@ export function HomeScreen({
                         <MapPin size={14} color={colors.accentDark} />
                       </View>
                       <View style={styles.routeNames}>
-                        <Text style={styles.routeName} numberOfLines={1}>{ride.originLocation.name}</Text>
-                        <Text style={styles.routeNameDestination} numberOfLines={1}>
+                        <Text style={styles.routeName} numberOfLines={1}>
+                          {ride.originLocation.name}
+                        </Text>
+                        <Text
+                          style={styles.routeNameDestination}
+                          numberOfLines={1}
+                        >
                           {ride.destinationLocation.name}
                         </Text>
                       </View>
                     </View>
 
                     <View style={styles.rideFooter}>
-                      <Text style={styles.driverName} numberOfLines={1}>{ride.driver.fullName}</Text>
+                      <Text style={styles.driverName} numberOfLines={1}>
+                        {ride.driver.fullName}
+                      </Text>
                       <View style={styles.seats}>
                         <Users size={13} color={colors.muted} />
                         <Text style={styles.seatsText}>
-                          {ride.driver.id === me?.id
+                          {ride.participationRole === 'DRIVER'
                             ? `${ride.availableSeats} ${ride.availableSeats === 1 ? 'vaga disponível' : 'vagas disponíveis'}`
-                            : `${ride.reservations.find((reservation) =>
-                              reservation.passengerId === me?.id && reservation.status === 'CONFIRMED',
-                            )?.seats ?? 1} vaga reservada`}
+                            : `${ride.reservedSeats} ${ride.reservedSeats === 1 ? 'vaga reservada' : 'vagas reservadas'}`}
                         </Text>
                       </View>
                     </View>
@@ -355,25 +418,13 @@ export function HomeScreen({
                 <View style={styles.emptyIcon}>
                   <CarFront size={22} color={colors.muted} />
                 </View>
-                <Text style={styles.emptyTitle}>Nenhuma carona agendada</Text>
+                <Text style={styles.emptyTitle}>Nenhuma carona recente</Text>
                 <Text style={styles.emptyText}>
                   Quando você tiver uma viagem, ela aparecerá aqui.
                 </Text>
               </View>
             )}
 
-            {me ? (
-              <View style={styles.accountInfo}>
-                <Text style={styles.accountLabel}>Conta conectada</Text>
-                <Text style={styles.accountEmail} numberOfLines={1}>{me.institutionalEmail}</Text>
-                {me.roles?.length ? (
-                  <Text style={styles.accountRole}>
-                    {me.roles.map(({ role }) => role.name === 'DRIVER' ? 'Motorista' :
-                      role.name === 'PASSENGER' ? 'Passageiro' : 'Administrador').join(' · ')}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -384,74 +435,344 @@ export function HomeScreen({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.primary },
   scrollContent: { flexGrow: 1, backgroundColor: colors.background },
-  page: { flexGrow: 1, alignItems: 'center', backgroundColor: colors.background },
-  header: { width: '100%', backgroundColor: colors.primary, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 22 },
-  headerContent: { width: '100%', maxWidth: maxContentWidth, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  page: {
+    flexGrow: 1,
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  header: {
+    width: '100%',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 22,
+  },
+  headerContent: {
+    width: '100%',
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   greeting: { flex: 1, marginRight: 16 },
-  greetingLabel: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 19, color: '#CBD5E1' },
-  greetingName: { fontFamily: fonts.bold, fontSize: 25, lineHeight: 31, color: colors.white },
+  greetingLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#CBD5E1',
+  },
+  greetingName: {
+    fontFamily: fonts.bold,
+    fontSize: 25,
+    lineHeight: 31,
+    color: colors.white,
+  },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerIconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#1E293B', alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  headerIconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#1E293B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.white },
-  content: { width: '100%', maxWidth: maxContentWidth, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 32 },
+  content: {
+    width: '100%',
+    maxWidth: maxContentWidth,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 32,
+  },
   registrationNotice: { marginBottom: 14 },
   errorNotice: { gap: 8, marginBottom: 14 },
-  retryText: { fontFamily: fonts.bold, fontSize: 13, lineHeight: 20, color: colors.accentDark },
-  intro: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 94, padding: 18, marginBottom: 16, borderRadius: radius, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
-  introIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
+  retryText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    lineHeight: 20,
+    color: colors.accentDark,
+  },
+  intro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    minHeight: 94,
+    padding: 18,
+    marginBottom: 16,
+    borderRadius: radius,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  introIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   introCopy: { flex: 1, gap: 4 },
-  introTitle: { fontFamily: fonts.bold, fontSize: 15, lineHeight: 20, color: colors.primary },
-  introSubtitle: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: colors.muted },
+  introTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.primary,
+  },
+  introSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.muted,
+  },
   actions: { flexDirection: 'row', gap: 12, marginBottom: 27 },
-  actionCard: { flex: 1, minHeight: 148, borderRadius: radius, padding: 16, justifyContent: 'space-between', overflow: 'hidden' },
+  actionCard: {
+    flex: 1,
+    minHeight: 148,
+    borderRadius: radius,
+    padding: 16,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
   searchCard: { backgroundColor: colors.accent },
   offerCard: { backgroundColor: colors.primary },
-  actionIconLight: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  actionIconDark: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
-  actionTitle: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, color: colors.white },
-  actionSubtitle: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 15, color: 'rgba(255,255,255,0.78)', marginTop: 5 },
+  actionIconLight: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionIconDark: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.white,
+  },
+  actionSubtitle: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    lineHeight: 15,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: 5,
+  },
   actionArrow: { position: 'absolute', right: 14, top: 14 },
   pressed: { opacity: 0.86 },
   quickSection: { marginBottom: 25 },
   quickGrid: { flexDirection: 'row', gap: 10, marginTop: 11 },
-  quickItem: { flex: 1, minWidth: 0, minHeight: 98, paddingVertical: 12, paddingHorizontal: 5, borderRadius: 14, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  quickIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  quickItem: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 98,
+    paddingVertical: 12,
+    paddingHorizontal: 5,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  quickIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   messagesIcon: { backgroundColor: '#EFF9FF' },
   historyIcon: { backgroundColor: '#F5F3FF' },
   settingsIcon: { backgroundColor: '#F1F5F9' },
-  quickLabel: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 15, color: colors.primary, textAlign: 'center' },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 22, color: colors.primary },
-  sectionSubtitle: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 17, color: colors.muted, marginTop: 2 },
-  sectionIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
-  loadingState: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  quickLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    lineHeight: 15,
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.primary,
+  },
+  sectionSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 17,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  sectionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingState: {
+    minHeight: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   rideList: { gap: 11 },
-  rideCard: { padding: 15, borderRadius: radius, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
-  rideTopRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 14 },
-  rideDateBadge: { width: 44, height: 48, borderRadius: 12, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
-  rideDateMonth: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 14, color: colors.accentDark, textTransform: 'uppercase' },
-  rideDateDay: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, color: colors.primary },
+  rideCard: {
+    padding: 15,
+    borderRadius: radius,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  rideTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    marginBottom: 14,
+  },
+  rideDateBadge: {
+    width: 44,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rideDateMonth: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.accentDark,
+    textTransform: 'uppercase',
+  },
+  rideDateDay: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.primary,
+  },
   rideTimeBlock: { flex: 1, gap: 3 },
-  rideTime: { fontFamily: fonts.bold, fontSize: 16, lineHeight: 20, color: colors.primary },
-  rideStatus: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 15, color: colors.muted },
-  route: { flexDirection: 'row', gap: 11, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.background },
+  rideTime: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.primary,
+  },
+  rideStatus: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.muted,
+  },
+  route: {
+    flexDirection: 'row',
+    gap: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+  },
   routeMarker: { alignItems: 'center', justifyContent: 'center', gap: 3 },
-  originDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  originDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
   routeLine: { width: 1, height: 11, backgroundColor: '#CBD5E1' },
   routeNames: { flex: 1, justifyContent: 'space-between', gap: 8 },
-  routeName: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted },
-  routeNameDestination: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16, color: colors.primary },
-  rideFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12 },
-  driverName: { flex: 1, fontFamily: fonts.medium, fontSize: 11, lineHeight: 16, color: colors.foreground },
+  routeName: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.muted,
+  },
+  routeNameDestination: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.primary,
+  },
+  rideFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 12,
+  },
+  driverName: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.foreground,
+  },
   seats: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  seatsText: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 16, color: colors.muted },
-  emptyState: { alignItems: 'center', paddingHorizontal: 22, paddingVertical: 25, borderRadius: radius, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border },
-  emptyIcon: { width: 44, height: 44, borderRadius: 15, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  emptyTitle: { fontFamily: fonts.bold, fontSize: 14, lineHeight: 20, color: colors.primary, textAlign: 'center' },
-  emptyText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: colors.muted, textAlign: 'center', marginTop: 5 },
-  accountInfo: { marginTop: 22, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border },
-  accountLabel: { fontFamily: fonts.medium, fontSize: 10, lineHeight: 15, color: colors.muted, textTransform: 'uppercase' },
-  accountEmail: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: colors.foreground, marginTop: 3 },
-  accountRole: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 16, color: colors.accentDark, marginTop: 3 },
+  seatsText: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.muted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingHorizontal: 22,
+    paddingVertical: 25,
+    borderRadius: radius,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: 5,
+  },
 });

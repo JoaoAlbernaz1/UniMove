@@ -8,8 +8,6 @@ import {
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
+import { formatRideDate, formatRideTime } from '../offerRide';
 import { colors, fonts, maxContentWidth } from '../theme';
 
 type Ride = {
@@ -26,9 +25,15 @@ type Ride = {
   departureAt: string;
   status: 'SCHEDULED' | 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   availableSeats: number;
+  pricePerPersonCents: number;
   originLocation: { name: string };
   destinationLocation: { name: string };
-  driver: { id: string; fullName: string };
+  driver: {
+    id: string;
+    fullName: string;
+    ratingAverage: number | null;
+    ratingCount: number;
+  };
   vehicle?: { brand: string; model: string };
 };
 
@@ -40,75 +45,101 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
   const [dateFilter, setDateFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState('');
 
-  const [allRides, setAllRides] = useState<Ride[]>([]);
   const [displayedRides, setDisplayedRides] = useState<Ride[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Busca inicial automática ao abrir a tela
+  // A API aplica os filtros e devolve uma página já ordenada.
   useEffect(() => {
-    const fetchRides = async () => {
-      try {
-        setLoading(true);
-        // Busca as caronas na API. (Ajuste a rota conforme seu backend, caso seja diferente)
-        const response = await authApi<Ride[]>('/rides');
-        setAllRides(response || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao buscar caronas.');
-      } finally {
-        setLoading(false);
-      }
+    let active = true;
+    const timeout = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      if (origin.trim()) params.set('origin', origin);
+      if (destination.trim()) params.set('destination', destination);
+      if (dateFilter) params.set('date', dateFilter);
+      if (timeFilter) params.set('time', timeFilter);
+      authApi<{ items: Ride[]; total: number }>(`/rides?${params}`)
+        .then((response) => {
+          if (active) {
+            setDisplayedRides(response.items);
+            setTotal(response.total);
+          }
+        })
+        .catch((cause: unknown) => {
+          if (active) {
+            setDisplayedRides([]);
+            setTotal(0);
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : 'Erro ao buscar caronas.',
+            );
+          }
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
     };
+  }, [authApi, origin, destination, dateFilter, timeFilter, page]);
 
-    void fetchRides();
-  }, [authApi]);
-
-  // Lógica de Filtro e Limite de 10 caronas
-  useEffect(() => {
-    let filtered = allRides.filter(
-      (ride) => ride.status === 'OPEN' || ride.status === 'SCHEDULED'
-    );
-
-    if (origin) {
-      filtered = filtered.filter((r) =>
-        r.originLocation.name.toLowerCase().includes(origin.toLowerCase())
-      );
-    }
-    if (destination) {
-      filtered = filtered.filter((r) =>
-        r.destinationLocation.name.toLowerCase().includes(destination.toLowerCase())
-      );
-    }
-
-    // Ordena pela data de saída mais próxima (ou pode inverter para createdAt, se preferir)
-    filtered.sort(
-      (a, b) => new Date(a.departureAt).getTime() - new Date(b.departureAt).getTime()
-    );
-
-    // Limita a exibição às 10 primeiras
-    setDisplayedRides(filtered.slice(0, 10));
-  }, [origin, destination, allRides]);
+  function clearFilters() {
+    setOrigin('');
+    setDestination('');
+    setDateFilter('');
+    setTimeFilter('');
+    setPage(1);
+  }
 
   // Funções auxiliares para formatar data e hora
   const formatDateTime = (isoString: string) => {
     const date = new Date(isoString);
-    const dayMonth = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(date).replace('.', '');
-    const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(date);
+    const dayMonth = new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+    })
+      .format(date)
+      .replace('.', '');
+    const time = new Intl.DateTimeFormat('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
     return { dayMonth, time };
   };
 
   const getInitials = (name: string) => {
-    return name.trim().split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    return name
+      .trim()
+      .split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        
+      <View style={styles.keyboardView}>
         {/* HEADER ESCURO COM FILTROS */}
         <View style={styles.darkHeader}>
           <View style={styles.headerTopRow}>
-            <Pressable onPress={onBack} style={styles.backButton} accessibilityRole="button">
+            <Pressable
+              onPress={onBack}
+              style={styles.backButton}
+              accessibilityRole="button"
+            >
               <ArrowLeft size={24} color={colors.white} />
             </Pressable>
             <Text style={styles.headerTitle}>Buscar Carona</Text>
@@ -117,13 +148,22 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
 
           <View style={styles.inputsContainer}>
             <View style={styles.inputWrapper}>
-              <Circle size={14} color="#00D159" fill="#00D159" style={styles.inputIcon} />
+              <Circle
+                size={14}
+                color="#00D159"
+                fill="#00D159"
+                style={styles.inputIcon}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Centro"
+                accessibilityLabel="Filtrar por origem"
                 placeholderTextColor="#94A3B8"
                 value={origin}
-                onChangeText={setOrigin}
+                onChangeText={(value) => {
+                  setOrigin(value);
+                  setPage(1);
+                }}
               />
             </View>
 
@@ -132,9 +172,13 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
               <TextInput
                 style={styles.input}
                 placeholder="Campus Norte"
+                accessibilityLabel="Filtrar por destino"
                 placeholderTextColor="#94A3B8"
                 value={destination}
-                onChangeText={setDestination}
+                onChangeText={(value) => {
+                  setDestination(value);
+                  setPage(1);
+                }}
               />
             </View>
 
@@ -142,19 +186,31 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
               <View style={[styles.inputWrapper, { flex: 1 }]}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Hoje"
+                  placeholder="dd/mm/aaaa"
+                  accessibilityLabel="Filtrar por data de saída, no formato dd/mm/aaaa"
                   placeholderTextColor="#94A3B8"
                   value={dateFilter}
-                  onChangeText={setDateFilter}
+                  onChangeText={(value) => {
+                    setDateFilter(formatRideDate(value));
+                    setPage(1);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={10}
                 />
               </View>
               <View style={[styles.inputWrapper, { flex: 1 }]}>
                 <TextInput
                   style={styles.input}
                   placeholder="08:00"
+                  accessibilityLabel="Filtrar pelo horário exato de saída, no formato HH:mm"
                   placeholderTextColor="#94A3B8"
                   value={timeFilter}
-                  onChangeText={setTimeFilter}
+                  onChangeText={(value) => {
+                    setTimeFilter(formatRideTime(value));
+                    setPage(1);
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={5}
                 />
               </View>
             </View>
@@ -163,17 +219,52 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
 
         {/* ÁREA BRANCA DE RESULTADOS */}
         <View style={styles.contentWrapper}>
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsCount}>
-                {loading ? 'Buscando...' : `${displayedRides.length} ${displayedRides.length === 1 ? 'carona encontrada' : 'caronas encontradas'}`}
+                {loading
+                  ? 'Buscando...'
+                  : `${total} ${total === 1 ? 'carona encontrada' : 'caronas encontradas'}`}
               </Text>
-              <Pressable style={styles.filterButton}>
+              <Pressable
+                style={styles.filterButton}
+                onPress={clearFilters}
+                accessibilityRole="button"
+                accessibilityLabel="Limpar filtros"
+              >
                 <SlidersHorizontal size={14} color={colors.primary} />
-                <Text style={styles.filterButtonText}>Filtros</Text>
+                <Text style={styles.filterButtonText}>Limpar</Text>
               </Pressable>
             </View>
+
+            {total > pageSize && !loading && !error ? (
+              <View style={styles.resultsHeader}>
+                <Pressable
+                  onPress={() => setPage((value) => value - 1)}
+                  disabled={page === 1}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: page === 1 }}
+                  style={styles.filterButton}
+                >
+                  <Text style={styles.filterButtonText}>Anterior</Text>
+                </Pressable>
+                <Text style={styles.resultsCount}>
+                  Página {page} de {Math.ceil(total / pageSize)}
+                </Text>
+                <Pressable
+                  onPress={() => setPage((value) => value + 1)}
+                  disabled={page * pageSize >= total}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: page * pageSize >= total }}
+                  style={styles.filterButton}
+                >
+                  <Text style={styles.filterButtonText}>Próxima</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             {loading ? (
               <View style={styles.stateContainer}>
@@ -185,35 +276,56 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
               </View>
             ) : displayedRides.length === 0 ? (
               <View style={styles.stateContainer}>
-                <Text style={styles.emptyText}>Nenhuma carona encontrada para estes locais.</Text>
+                <Text style={styles.emptyText}>
+                  Nenhuma carona encontrada para os filtros informados.
+                </Text>
               </View>
             ) : (
               <View style={styles.rideList}>
                 {displayedRides.map((ride) => {
                   const { dayMonth, time } = formatDateTime(ride.departureAt);
-                  const carModel = ride.vehicle ? `${ride.vehicle.brand} ${ride.vehicle.model}` : 'Veículo padrão';
+                  const carModel = ride.vehicle
+                    ? `${ride.vehicle.brand} ${ride.vehicle.model}`
+                    : 'Veículo padrão';
 
                   return (
                     <View key={ride.id} style={styles.card}>
-                      
                       {/* HEADER DO CARD */}
                       <View style={styles.cardHeader}>
                         <View style={styles.driverInfo}>
                           <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>{getInitials(ride.driver.fullName)}</Text>
+                            <Text style={styles.avatarText}>
+                              {getInitials(ride.driver.fullName)}
+                            </Text>
                           </View>
-                          <View>
-                            <Text style={styles.driverName}>{ride.driver.fullName}</Text>
+                          <View style={styles.driverCopy}>
+                            <Text style={styles.driverName} numberOfLines={1}>
+                              {ride.driver.fullName}
+                            </Text>
                             <View style={styles.ratingRow}>
                               <Star size={12} color="#00D159" fill="#00D159" />
-                              <Text style={styles.ratingText}>4.8</Text>
-                              <Text style={styles.carText}>{carModel}</Text>
+                              <Text style={styles.ratingText}>
+                                {ride.driver.ratingAverage === null
+                                  ? 'Sem avaliações'
+                                  : new Intl.NumberFormat('pt-BR', {
+                                      maximumFractionDigits: 1,
+                                    }).format(ride.driver.ratingAverage)}
+                              </Text>
+                              <Text style={styles.carText} numberOfLines={1}>
+                                {carModel}
+                              </Text>
                             </View>
                           </View>
                         </View>
                         <View style={styles.priceContainer}>
-                          {/* Substitua "Solidária" pelo preço se houver essa lógica no futuro */}
-                          <Text style={styles.priceValue}>Solidária</Text>
+                          <Text style={styles.priceValue}>
+                            {ride.pricePerPersonCents > 0
+                              ? new Intl.NumberFormat('pt-BR', {
+                                  style: 'currency',
+                                  currency: 'BRL',
+                                }).format(ride.pricePerPersonCents / 100)
+                              : 'Solidária'}
+                          </Text>
                           <Text style={styles.priceLabel}>por pessoa</Text>
                         </View>
                       </View>
@@ -223,15 +335,25 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
                         <View style={styles.routeTimeline}>
                           <View style={styles.dotOrigin} />
                           <View style={styles.line} />
-                          <MapPin size={14} color={colors.primary} style={styles.pinDest} />
+                          <MapPin
+                            size={14}
+                            color={colors.primary}
+                            style={styles.pinDest}
+                          />
                         </View>
                         <View style={styles.routeDetails}>
                           <View style={styles.originBlock}>
-                            <Text style={styles.locationName}>{ride.originLocation.name}</Text>
-                            <Text style={styles.dateTimeText}>{dayMonth} • {time}</Text>
+                            <Text style={styles.locationName}>
+                              {ride.originLocation.name}
+                            </Text>
+                            <Text style={styles.dateTimeText}>
+                              {dayMonth} • {time}
+                            </Text>
                           </View>
                           <View style={styles.destBlock}>
-                            <Text style={styles.locationName}>{ride.destinationLocation.name}</Text>
+                            <Text style={styles.locationName}>
+                              {ride.destinationLocation.name}
+                            </Text>
                           </View>
                         </View>
                       </View>
@@ -241,13 +363,15 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
                       {/* FOOTER DO CARD */}
                       <View style={styles.cardFooter}>
                         <Text style={styles.seatsText}>
-                          {ride.availableSeats} {ride.availableSeats === 1 ? 'vaga disponível' : 'vagas disponíveis'}
+                          {ride.availableSeats}{' '}
+                          {ride.availableSeats === 1
+                            ? 'vaga disponível'
+                            : 'vagas disponíveis'}
                         </Text>
                         <Pressable style={styles.reserveButton}>
                           <Text style={styles.reserveButtonText}>Reservar</Text>
                         </Pressable>
                       </View>
-
                     </View>
                   );
                 })}
@@ -255,7 +379,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
             )}
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -263,7 +387,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.primary },
   keyboardView: { flex: 1 },
-  
+
   // Estilos do Header Escuro
   darkHeader: {
     backgroundColor: colors.primary,
@@ -282,7 +406,7 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 8, marginLeft: -8 },
   headerTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.white },
-  
+
   inputsContainer: {
     width: '100%',
     maxWidth: maxContentWidth,
@@ -372,10 +496,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   driverInfo: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  driverCopy: { flex: 1, minWidth: 0 },
   avatar: {
     width: 40,
     height: 40,
@@ -397,6 +524,7 @@ const styles = StyleSheet.create({
   },
   ratingRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 4,
   },
@@ -413,6 +541,7 @@ const styles = StyleSheet.create({
   },
   priceContainer: {
     alignItems: 'flex-end',
+    marginLeft: 8,
   },
   priceValue: {
     fontFamily: fonts.bold,
@@ -424,7 +553,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94A3B8',
   },
-  
+
   routeContainer: {
     flexDirection: 'row',
     marginBottom: 16,
@@ -473,7 +602,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 2,
   },
-  
+
   divider: {
     height: 1,
     backgroundColor: '#F1F5F9',

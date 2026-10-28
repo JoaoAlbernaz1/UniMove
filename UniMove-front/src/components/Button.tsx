@@ -5,21 +5,32 @@ import { colors, fonts, radius } from '../theme';
 type Props = {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'outline';
+  variant?: 'primary' | 'outline' | 'accent';
   icon?: LucideIcon;
   loading?: boolean;
   disabled?: boolean;
 };
 
-export function Button({ title, onPress, variant = 'primary', icon: Icon, loading, disabled }: Props) {
-  const primary = variant === 'primary';
+export function Button({
+  title,
+  onPress,
+  variant = 'primary',
+  icon: Icon,
+  loading,
+  disabled,
+}: Props) {
+  const primary = variant !== 'outline';
   const inactive = loading || disabled;
 
   return (
     <Pressable
       style={({ pressed }) => [
         styles.base,
-        primary ? styles.primary : styles.outline,
+        variant === 'accent'
+          ? styles.accent
+          : primary
+            ? styles.primary
+            : styles.outline,
         pressed && styles.pressed,
         inactive && styles.inactive,
       ]}
@@ -33,8 +44,12 @@ export function Button({ title, onPress, variant = 'primary', icon: Icon, loadin
         <ActivityIndicator color={primary ? colors.white : colors.accent} />
       ) : (
         <>
-          <Text style={primary ? styles.primaryText : styles.outlineText}>{title}</Text>
-          {Icon ? <Icon size={20} color={primary ? colors.white : colors.accent} /> : null}
+          <Text style={primary ? styles.primaryText : styles.outlineText}>
+            {title}
+          </Text>
+          {Icon ? (
+            <Icon size={20} color={primary ? colors.white : colors.accent} />
+          ) : null}
         </>
       )}
     </Pressable>
@@ -52,9 +67,20 @@ const styles = StyleSheet.create({
     borderRadius: radius,
   },
   primary: { backgroundColor: colors.primary },
+  accent: { backgroundColor: colors.accent },
   outline: { borderWidth: 2, borderColor: colors.accent },
   pressed: { opacity: 0.85 },
   inactive: { opacity: 0.5 },
-  primaryText: { fontFamily: fonts.medium, fontSize: 16, lineHeight: 24, color: colors.white },
-  outlineText: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.accent },
+  primaryText: {
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.white,
+  },
+  outlineText: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.accent,
+  },
 });
