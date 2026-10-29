@@ -1,7 +1,15 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type TextInputProps,
+} from 'react-native';
 import { colors, fonts, radius } from '../theme';
 
 type Props = TextInputProps & {
@@ -10,21 +18,59 @@ type Props = TextInputProps & {
   hint?: string;
   // Campo de senha: esconde o texto e mostra o botão de olho.
   password?: boolean;
+  hideLabel?: boolean;
+  error?: string;
+  prefix?: string;
+  iconColor?: string;
 };
 
-export function TextField({ label, icon: Icon, hint, password, ...input }: Props) {
+export function TextField({
+  label,
+  icon: Icon,
+  hint,
+  password,
+  hideLabel,
+  error,
+  prefix,
+  iconColor,
+  style,
+  onFocus,
+  onBlur,
+  ...input
+}: Props) {
   const [visible, setVisible] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.box}>
-        {Icon ? <Icon size={20} color={colors.muted} /> : null}
+      {!hideLabel ? <Text style={styles.label}>{label}</Text> : null}
+      <View
+        style={[
+          styles.box,
+          input.multiline && styles.multiline,
+          focused && styles.focused,
+          !!error && styles.invalid,
+        ]}
+      >
+        {Icon ? <Icon size={20} color={iconColor ?? colors.muted} /> : null}
+        {prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            input.multiline && styles.multilineInput,
+            style,
+          ]}
           accessibilityLabel={label}
           placeholderTextColor={colors.muted}
           secureTextEntry={password && !visible}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           {...input}
         />
         {password ? (
@@ -43,13 +89,23 @@ export function TextField({ label, icon: Icon, hint, password, ...input }: Props
         ) : null}
       </View>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {error ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   field: { gap: 8 },
-  label: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.primary },
+  label: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.primary,
+  },
   box: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -71,5 +127,22 @@ const styles = StyleSheet.create({
     // Tira o contorno azul padrão do navegador no web.
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
   },
-  hint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted, paddingHorizontal: 8 },
+  focused: { borderColor: colors.accentDark },
+  invalid: { borderColor: colors.destructive },
+  multiline: { alignItems: 'flex-start', minHeight: 96 },
+  multilineInput: { minHeight: 70, textAlignVertical: 'top' },
+  prefix: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted },
+  error: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.destructive,
+  },
+  hint: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.muted,
+    paddingHorizontal: 8,
+  },
 });

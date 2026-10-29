@@ -23,6 +23,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -30,7 +32,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web --port 8080",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.cjs",
+    "lint": "expo lint"
   },
   "private": true
 }

@@ -8,7 +8,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsStrongPassword, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { PASSWORD_ERROR, passwordOptions } from '../auth/registration-policy';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
@@ -16,12 +18,16 @@ import { UserStatus } from '../../generated/prisma/enums';
 import { ApiBearerAuth } from '@nestjs/swagger';
 
 class UpdateMeDto {
-  @IsOptional() @IsString() @MinLength(3) fullName?: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  fullName?: string;
 }
 
 class ChangePasswordDto {
   @IsString() currentPassword!: string;
-  @IsString() @MinLength(8) newPassword!: string;
+  @IsString() @IsStrongPassword(passwordOptions, { message: PASSWORD_ERROR }) newPassword!: string;
 }
 
 @ApiBearerAuth()

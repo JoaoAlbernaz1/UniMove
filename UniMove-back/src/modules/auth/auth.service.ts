@@ -6,9 +6,25 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import {
+  PASSWORD_REQUIREMENTS,
+  TERMS_VERSION,
+  PRIVACY_POLICY_VERSION,
+} from './registration-policy';
+import { TERMS_OF_USE, PRIVACY_POLICY } from './registration-documents';
 
 @Injectable()
 export class AuthService {
+  registrationPolicy() {
+    return {
+      termsVersion: TERMS_VERSION,
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      passwordRequirements: PASSWORD_REQUIREMENTS,
+      termsOfUse: TERMS_OF_USE,
+      privacyPolicy: PRIVACY_POLICY,
+      institutionalDomains: this.config.get<string[]>('auth.institutionalDomains') ?? [],
+    };
+  }
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -41,6 +57,9 @@ export class AuthService {
           institutionalEmail: email,
           passwordHash: await argon2.hash(dto.password, { type: argon2.argon2id }),
           status: UserStatus.ACTIVE,
+          termsAcceptedAt: new Date(),
+          termsVersion: dto.termsVersion,
+          privacyPolicyVersion: dto.privacyPolicyVersion,
           roles: { create: { roleId: role.id } },
         },
         select: { id: true, fullName: true, institutionalEmail: true, status: true },

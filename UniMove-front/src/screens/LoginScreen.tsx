@@ -15,7 +15,6 @@ import { Button } from '../components/Button';
 import { Message } from '../components/Message';
 import { TextField } from '../components/TextField';
 import { colors, fonts, maxContentWidth, radius } from '../theme';
-import { emailError } from '../validation';
 
 type Props = {
   onRegister: () => void;
@@ -32,21 +31,14 @@ export function LoginScreen({ onRegister }: Props) {
 
   async function handleSubmit() {
     setNotice(null);
-    const invalidEmail = emailError(email);
-    if (invalidEmail) {
-      setError(invalidEmail);
-      return;
-    }
-    if (!password) {
-      setError('Digite sua senha.');
-      return;
-    }
     setError(null);
     setLoading(true);
     try {
       await signIn(email, password);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Algo deu errado. Tente novamente.');
+      setError(
+        e instanceof Error ? e.message : 'Algo deu errado. Tente novamente.',
+      );
       setLoading(false);
     }
   }
@@ -63,19 +55,26 @@ export function LoginScreen({ onRegister }: Props) {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.content}>
             <View style={styles.brand}>
               <View style={styles.logo}>
                 <Car size={32} color={colors.accent} strokeWidth={1.5} />
               </View>
               <Text style={styles.brandName}>UniMove</Text>
-              <Text style={styles.brandTagline}>Caronas universitárias seguras</Text>
+              <Text style={styles.brandTagline}>
+                Caronas universitárias seguras
+              </Text>
             </View>
 
             <View style={styles.heading}>
               <Text style={styles.title}>Bem-vindo de volta!</Text>
-              <Text style={styles.subtitle}>Entre com sua conta universitária</Text>
+              <Text style={styles.subtitle}>
+                Entre com sua conta universitária
+              </Text>
             </View>
 
             <View style={styles.fields}>
@@ -105,7 +104,11 @@ export function LoginScreen({ onRegister }: Props) {
                 onSubmitEditing={handleSubmit}
                 editable={!loading}
               />
-              <Pressable style={styles.forgot} onPress={comingSoon} accessibilityRole="button">
+              <Pressable
+                style={styles.forgot}
+                onPress={comingSoon}
+                accessibilityRole="button"
+              >
                 <Text style={styles.link}>Esqueceu a senha?</Text>
               </Pressable>
             </View>
@@ -117,7 +120,12 @@ export function LoginScreen({ onRegister }: Props) {
             ) : null}
             {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-            <Button title="Entrar" icon={ArrowRight} onPress={handleSubmit} loading={loading} />
+            <Button
+              title="Entrar"
+              icon={ArrowRight}
+              onPress={handleSubmit}
+              loading={loading}
+            />
 
             <View style={styles.divider}>
               <View style={styles.line} />
@@ -125,7 +133,11 @@ export function LoginScreen({ onRegister }: Props) {
               <View style={styles.line} />
             </View>
 
-            <Button title="Criar nova conta" variant="outline" onPress={onRegister} />
+            <Button
+              title="Criar nova conta"
+              variant="outline"
+              onPress={onRegister}
+            />
 
             <Text style={styles.footer}>
               Primeira vez? Cadastre-se e comece a compartilhar caronas.
@@ -152,14 +164,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  brandName: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 32, color: colors.primary },
-  brandTagline: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.muted, marginTop: 4 },
+  brandName: {
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 32,
+    color: colors.primary,
+  },
+  brandTagline: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+    marginTop: 4,
+  },
   heading: { marginBottom: 24 },
-  title: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 32, color: colors.primary, marginBottom: 4 },
-  subtitle: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.muted },
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 32,
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+  },
   fields: { gap: 16, marginBottom: 24 },
   forgot: { alignSelf: 'flex-end' },
-  link: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.accent },
+  link: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.accent,
+  },
   feedback: { marginBottom: 16 },
   notice: {
     fontFamily: fonts.regular,
@@ -169,9 +208,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 24 },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 24,
+  },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted },
+  dividerText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.muted,
+  },
   footer: {
     fontFamily: fonts.regular,
     fontSize: 12,

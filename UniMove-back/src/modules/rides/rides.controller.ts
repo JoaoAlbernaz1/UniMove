@@ -110,41 +110,6 @@ export class RidesController {
     });
   }
 
-  // NOVA ROTA CORRIGIDA: Buscar todas as caronas disponíveis
-  @Get()
-  async findAll() {
-    return this.prisma.ride.findMany({
-      where: {
-        status: {
-          in: [RideStatus.OPEN, RideStatus.SCHEDULED],
-        },
-        departureAt: {
-          gt: new Date(), // Apenas caronas futuras
-        },
-        availableSeats: {
-          gt: 0, // Apenas com vagas disponíveis
-        }
-      },
-      include: {
-        driver: {
-          select: { id: true, fullName: true },
-        },
-        vehicle: {
-          select: { brand: true, model: true },
-        },
-        originLocation: {
-          select: { name: true },
-        },
-        destinationLocation: {
-          select: { name: true },
-        },
-      },
-      orderBy: {
-        departureAt: 'asc', // Ordena da mais próxima para a mais distante
-      },
-    });
-  }
-
   @Post(':id/start') 
   async start(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.transition(

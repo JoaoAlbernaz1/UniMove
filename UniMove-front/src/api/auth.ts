@@ -1,6 +1,23 @@
 import { api } from './client';
+import type { LegalDocument } from '../legal';
 
-export type Tokens = { accessToken: string; refreshToken: string; expiresIn: number };
+export type RegistrationPolicy = {
+  termsVersion: string;
+  privacyPolicyVersion: string;
+  passwordRequirements: string[];
+  institutionalDomains: string[];
+  termsOfUse: LegalDocument;
+  privacyPolicy: LegalDocument;
+};
+export function registrationPolicy() {
+  return api<RegistrationPolicy>('/auth/registration-policy');
+}
+
+export type Tokens = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+};
 
 export type Me = { id: string; fullName: string; institutionalEmail: string };
 
@@ -16,16 +33,29 @@ export type RegisterInput = {
   cpf: string;
   institutionalEmail: string;
   password: string;
+  passwordConfirmation: string;
+  acceptedTerms: boolean;
+  termsVersion: string;
+  privacyPolicyVersion: string;
 };
 
 export function register(input: RegisterInput) {
-  return api<Me>('/auth/register', { method: 'POST', body: JSON.stringify(input) });
+  return api<Me>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function refresh(refreshToken: string) {
-  return api<Tokens>('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) });
+  return api<Tokens>('/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
 }
 
 export function logout(refreshToken: string) {
-  return api<void>('/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) });
+  return api<void>('/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
 }

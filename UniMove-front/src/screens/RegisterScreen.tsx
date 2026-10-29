@@ -1,5 +1,12 @@
-import { ArrowLeft, Check, Circle, IdCard, Lock, Mail, User } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  Check,
+  IdCard,
+  Lock,
+  Mail,
+  User,
+} from 'lucide-react-native';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   BackHandler,
   KeyboardAvoidingView,
@@ -16,17 +23,10 @@ import { Button } from '../components/Button';
 import { LegalModal } from '../components/LegalModal';
 import { Message } from '../components/Message';
 import { TextField } from '../components/TextField';
-import { ALLOWED_EMAIL_DOMAINS } from '../config';
-import { PRIVACY_POLICY, TERMS_OF_USE, type LegalDocument } from '../legal';
+import type { LegalDocument } from '../legal';
+import { registrationPolicy, type RegistrationPolicy } from '../api/auth';
 import { colors, fonts, maxContentWidth } from '../theme';
-import {
-  emailError,
-  formatCpf,
-  isStrongPassword,
-  isValidCpf,
-  onlyDigits,
-  PASSWORD_RULES,
-} from '../validation';
+import { formatCpf, onlyDigits } from '../validation';
 
 type Props = {
   onBack: () => void;
@@ -44,47 +44,55 @@ export function RegisterScreen({ onBack }: Props) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [openDocument, setOpenDocument] = useState<LegalDocument | null>(null);
   const [loading, setLoading] = useState(false);
+  const [policy, setPolicy] = useState<RegistrationPolicy | null>(null);
+  const [policyAttempt, setPolicyAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // A01: conta já existe (ou acabou de ser criada) — oferece voltar ao login.
   const [offerLogin, setOfferLogin] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    registrationPolicy()
+      .then((value) => {
+        if (active) {
+          setPolicy(value);
+          setError(null);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Não foi possível carregar os dados do cadastro.',
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [policyAttempt]);
+
   // I01 comando 2: "Voltar" sempre habilitado, inclusive pelo botão do Android.
   useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onBack();
-      return true;
-    });
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        onBack();
+        return true;
+      },
+    );
     return () => subscription.remove();
   }, [onBack]);
 
   // A mensagem fica abaixo do formulário; rola até ela para não passar despercebida.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   useEffect(() => {
     if (error) scrollRef.current?.scrollToEnd({ animated: true });
   }, [error]);
 
-  // I01 comando 1: habilitado quando todos os campos obrigatórios (RN01) estão preenchidos
-  // e os termos foram aceitos.
-  const filled =
-    [fullName, cpf, email, password, confirmation].every((value) => value.trim()) && acceptedTerms;
-
-  function validate() {
-    if (fullName.trim().length < 3) return 'Digite seu nome completo.';
-    if (!isValidCpf(cpf)) return 'CPF inválido. Confira os 11 dígitos.';
-    const invalidEmail = emailError(email);
-    if (invalidEmail) return invalidEmail;
-    if (!isStrongPassword(password)) return 'A senha não atende aos requisitos abaixo do campo.';
-    if (password !== confirmation) return 'A confirmação precisa ser idêntica à senha.';
-    return null;
-  }
-
   async function handleSubmit() {
     setOfferLogin(false);
-    const invalid = validate();
-    if (invalid) {
-      setError(invalid);
-      return;
-    }
+    if (!policy || loading) return;
     setError(null);
     setLoading(true);
     try {
@@ -93,11 +101,18 @@ export function RegisterScreen({ onBack }: Props) {
         cpf: onlyDigits(cpf),
         institutionalEmail: email.trim().toLowerCase(),
         password,
+        passwordConfirmation: confirmation,
+        acceptedTerms,
+        termsVersion: policy.termsVersion,
+        privacyPolicyVersion: policy.privacyPolicyVersion,
       });
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Algo deu errado. Tente novamente.';
+      const message =
+        e instanceof Error ? e.message : 'Algo deu errado. Tente novamente.';
       setError(message);
-      setOfferLogin(e instanceof AccountCreatedError || message.includes('já cadastrado'));
+      setOfferLogin(
+        e instanceof AccountCreatedError || message.includes('já cadastrado'),
+      );
       setLoading(false);
     }
   }
@@ -126,7 +141,9 @@ export function RegisterScreen({ onBack }: Props) {
 
             <View style={styles.heading}>
               <Text style={styles.title}>Criar conta</Text>
-              <Text style={styles.subtitle}>Junte-se à comunidade universitária de caronas</Text>
+              <Text style={styles.subtitle}>
+                Junte-se à comunidade universitária de caronas
+              </Text>
             </View>
 
             <View style={styles.fields}>
@@ -158,7 +175,11 @@ export function RegisterScreen({ onBack }: Props) {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="seu@email.universitario.br"
-                hint={`Use seu e-mail institucional (@${ALLOWED_EMAIL_DOMAINS.join(', @')})`}
+                hint={
+                  policy
+                    ? `Use seu e-mail institucional (@${policy.institutionalDomains.join(', @')})`
+                    : undefined
+                }
                 maxLength={150}
                 autoCapitalize="none"
                 autoComplete="email"
@@ -178,20 +199,15 @@ export function RegisterScreen({ onBack }: Props) {
                   textContentType="newPassword"
                   editable={!loading}
                 />
-                <View style={styles.rules} accessibilityLabel="Requisitos da senha">
-                  {PASSWORD_RULES.map((rule) => {
-                    const ok = rule.test(password);
-                    return (
-                      <View key={rule.label} style={styles.rule}>
-                        {ok ? (
-                          <Check size={14} color={colors.accentDark} />
-                        ) : (
-                          <Circle size={14} color={colors.muted} />
-                        )}
-                        <Text style={[styles.ruleText, ok && styles.ruleOk]}>{rule.label}</Text>
-                      </View>
-                    );
-                  })}
+                <View
+                  style={styles.rules}
+                  accessibilityLabel="Requisitos da senha"
+                >
+                  {policy?.passwordRequirements.map((requirement) => (
+                    <Text key={requirement} style={styles.ruleText}>
+                      {requirement}
+                    </Text>
+                  ))}
                 </View>
               </View>
               <TextField
@@ -204,7 +220,7 @@ export function RegisterScreen({ onBack }: Props) {
                 autoComplete="new-password"
                 textContentType="newPassword"
                 returnKeyType="go"
-                onSubmitEditing={filled ? handleSubmit : undefined}
+                onSubmitEditing={handleSubmit}
                 editable={!loading}
               />
 
@@ -214,25 +230,37 @@ export function RegisterScreen({ onBack }: Props) {
                   disabled={loading}
                   hitSlop={8}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: acceptedTerms, disabled: loading }}
+                  accessibilityState={{
+                    checked: acceptedTerms,
+                    disabled: loading,
+                  }}
                   accessibilityLabel="Concordo com os Termos de Uso e a Política de Privacidade"
                   style={[styles.checkbox, acceptedTerms && styles.checkboxOn]}
                 >
-                  {acceptedTerms ? <Check size={14} color={colors.white} strokeWidth={3} /> : null}
+                  {acceptedTerms ? (
+                    <Check size={14} color={colors.white} strokeWidth={3} />
+                  ) : null}
                 </Pressable>
                 <Text style={styles.termsText}>
-                  <Text onPress={() => setAcceptedTerms((value) => !value)}>Concordo com os </Text>
+                  <Text onPress={() => setAcceptedTerms((value) => !value)}>
+                    Concordo com os{' '}
+                  </Text>
                   <Text
                     style={styles.termsLink}
-                    onPress={() => setOpenDocument(TERMS_OF_USE)}
+                    onPress={() => setOpenDocument(policy?.termsOfUse ?? null)}
                     accessibilityRole="link"
                   >
                     Termos de Uso
                   </Text>
-                  <Text onPress={() => setAcceptedTerms((value) => !value)}> e </Text>
+                  <Text onPress={() => setAcceptedTerms((value) => !value)}>
+                    {' '}
+                    e{' '}
+                  </Text>
                   <Text
                     style={styles.termsLink}
-                    onPress={() => setOpenDocument(PRIVACY_POLICY)}
+                    onPress={() =>
+                      setOpenDocument(policy?.privacyPolicy ?? null)
+                    }
                     accessibilityRole="link"
                   >
                     Política de Privacidade
@@ -244,8 +272,18 @@ export function RegisterScreen({ onBack }: Props) {
             {error ? (
               <View style={styles.feedback}>
                 <Message tone="error">{error}</Message>
+                {!policy ? (
+                  <Button
+                    title="Tentar novamente"
+                    onPress={() => setPolicyAttempt((value) => value + 1)}
+                  />
+                ) : null}
                 {offerLogin ? (
-                  <Pressable onPress={onBack} accessibilityRole="button" style={styles.toLogin}>
+                  <Pressable
+                    onPress={onBack}
+                    accessibilityRole="button"
+                    style={styles.toLogin}
+                  >
                     <Text style={styles.link}>Voltar ao login</Text>
                   </Pressable>
                 ) : null}
@@ -256,11 +294,19 @@ export function RegisterScreen({ onBack }: Props) {
 
         <View style={styles.footer}>
           <View style={styles.content}>
-            <Button title="Criar conta" onPress={handleSubmit} loading={loading} disabled={!filled} />
+            <Button
+              title="Criar conta"
+              onPress={handleSubmit}
+              loading={loading}
+              disabled={!policy}
+            />
           </View>
         </View>
       </KeyboardAvoidingView>
-      <LegalModal document={openDocument} onClose={() => setOpenDocument(null)} />
+      <LegalModal
+        document={openDocument}
+        onClose={() => setOpenDocument(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -272,15 +318,34 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: maxContentWidth, alignSelf: 'center' },
   back: { alignSelf: 'flex-start', paddingTop: 48, paddingBottom: 24 },
   heading: { marginBottom: 32 },
-  title: { fontFamily: fonts.bold, fontSize: 30, lineHeight: 36, color: colors.primary, marginBottom: 8 },
-  subtitle: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 24, color: colors.muted },
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: 30,
+    lineHeight: 36,
+    color: colors.primary,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.muted,
+  },
   fields: { gap: 16 },
   passwordGroup: { gap: 8 },
   rules: { gap: 4, paddingHorizontal: 8 },
-  rule: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  ruleText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, color: colors.muted },
-  ruleOk: { color: colors.accentDark },
-  terms: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 12 },
+  ruleText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.muted,
+  },
+  terms: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+  },
   checkbox: {
     width: 20,
     height: 20,
@@ -293,11 +358,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkboxOn: { borderColor: colors.accent, backgroundColor: colors.accent },
-  termsText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, color: colors.muted },
+  termsText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+  },
   termsLink: { fontFamily: fonts.medium, color: colors.accent },
   feedback: { marginTop: 24, gap: 12 },
   toLogin: { alignSelf: 'center' },
-  link: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.accent },
+  link: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.accent,
+  },
   footer: {
     padding: 24,
     borderTopWidth: 1,
