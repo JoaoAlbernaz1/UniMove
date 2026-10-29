@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { formatRideDate, formatRideTime } from '../offerRide';
+import { OpenFreeMap, type MapPoint } from '../components/OpenFreeMap';
 import { colors, fonts, maxContentWidth } from '../theme';
 
 type Ride = {
@@ -26,8 +27,8 @@ type Ride = {
   status: 'SCHEDULED' | 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   availableSeats: number;
   pricePerPersonCents: number;
-  originLocation: { name: string };
-  destinationLocation: { name: string };
+  originLocation: { name: string; latitude?: number | null; longitude?: number | null };
+  destinationLocation: { name: string; latitude?: number | null; longitude?: number | null };
   driver: {
     id: string;
     fullName: string;
@@ -44,6 +45,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
   const [destination, setDestination] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   const [displayedRides, setDisplayedRides] = useState<Ride[]>([]);
   const [page, setPage] = useState(1);
@@ -118,6 +120,17 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
     }).format(date);
     return { dayMonth, time };
   };
+
+  const mapPoints: MapPoint[] = displayedRides.flatMap((ride) => {
+    const points: MapPoint[] = [];
+    if (ride.originLocation.latitude != null && ride.originLocation.longitude != null) {
+      points.push({ latitude: ride.originLocation.latitude, longitude: ride.originLocation.longitude, label: ride.originLocation.name, kind: 'origin' });
+    }
+    if (ride.destinationLocation.latitude != null && ride.destinationLocation.longitude != null) {
+      points.push({ latitude: ride.destinationLocation.latitude, longitude: ride.destinationLocation.longitude, label: ride.destinationLocation.name, kind: 'destination' });
+    }
+    return points;
+  });
 
   const getInitials = (name: string) => {
     return name
@@ -240,7 +253,18 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
               </Pressable>
             </View>
 
-            {total > pageSize && !loading && !error ? (
+            <View style={styles.viewSwitch}>
+              <Pressable style={[styles.viewButton, viewMode === 'list' && styles.viewButtonActive]} onPress={() => setViewMode('list')} accessibilityRole="button" accessibilityLabel="Mostrar resultados em lista">
+                <Text style={[styles.viewButtonText, viewMode === 'list' && styles.viewButtonTextActive]}>Lista</Text>
+              </Pressable>
+              <Pressable style={[styles.viewButton, viewMode === 'map' && styles.viewButtonActive]} onPress={() => setViewMode('map')} accessibilityRole="button" accessibilityLabel="Mostrar resultados no mapa">
+                <Text style={[styles.viewButtonText, viewMode === 'map' && styles.viewButtonTextActive]}>Mapa</Text>
+              </Pressable>
+            </View>
+
+            {viewMode === 'map' ? <View style={styles.mapContainer}><OpenFreeMap points={mapPoints} height={360} /></View> : null}
+
+            {viewMode === 'list' && total > pageSize && !loading && !error ? (
               <View style={styles.resultsHeader}>
                 <Pressable
                   onPress={() => setPage((value) => value - 1)}
@@ -266,21 +290,21 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
               </View>
             ) : null}
 
-            {loading ? (
+            {viewMode === 'list' && loading ? (
               <View style={styles.stateContainer}>
                 <ActivityIndicator color={colors.primary} size="large" />
               </View>
-            ) : error ? (
+            ) : viewMode === 'list' && error ? (
               <View style={styles.stateContainer}>
                 <Text style={styles.errorText}>{error}</Text>
               </View>
-            ) : displayedRides.length === 0 ? (
+            ) : viewMode === 'list' && displayedRides.length === 0 ? (
               <View style={styles.stateContainer}>
                 <Text style={styles.emptyText}>
                   Nenhuma carona encontrada para os filtros informados.
                 </Text>
               </View>
-            ) : (
+            ) : viewMode === 'list' ? (
               <View style={styles.rideList}>
                 {displayedRides.map((ride) => {
                   const { dayMonth, time } = formatDateTime(ride.departureAt);
@@ -376,7 +400,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
                   );
                 })}
               </View>
-            )}
+            ) : null}
           </ScrollView>
         </View>
       </View>
@@ -454,6 +478,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  viewSwitch: {
+    width: '100%',
+    maxWidth: maxContentWidth,
+    flexDirection: 'row',
+    backgroundColor: '#E9EEF5',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+  },
+  viewButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+    borderRadius: 8,
+  },
+  viewButtonActive: { backgroundColor: colors.white },
+  viewButtonText: { fontFamily: fonts.medium, fontSize: 13, color: '#64748B' },
+  viewButtonTextActive: { color: colors.primary },
+  mapContainer: { width: '100%', maxWidth: maxContentWidth, marginBottom: 16 },
   resultsCount: {
     fontFamily: fonts.medium,
     fontSize: 14,

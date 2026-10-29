@@ -1,4 +1,4 @@
-export type RideLocation = { id: string; name: string };
+export type RideLocation = { id: string; name: string; latitude?: number | null; longitude?: number | null };
 export type RideVehicle = {
   id: string;
   brand: string;

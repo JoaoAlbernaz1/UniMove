@@ -7,8 +7,8 @@ import { SearchRidesDto } from './search-rides.dto';
 const rideInclude = {
   driver: { select: { id: true, fullName: true } },
   vehicle: { select: { brand: true, model: true } },
-  originLocation: { select: { name: true } },
-  destinationLocation: { select: { name: true } },
+  originLocation: { select: { name: true, latitude: true, longitude: true } },
+  destinationLocation: { select: { name: true, latitude: true, longitude: true } },
 } satisfies Prisma.RideInclude;
 
 function normalized(value = '') {
