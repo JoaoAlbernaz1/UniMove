@@ -22,9 +22,11 @@ import { ChatScreen } from './src/screens/ChatScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { SearchRideScreen } from './src/screens/SearchRideScreen';
 import { OfferRideScreen } from './src/screens/OfferRideScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
 import { AdvertisementBar } from './src/components/AdvertisementBar';
+import { WelcomeScreen } from './src/screens/WelcomeScreen';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -57,21 +59,24 @@ function Root() {
 }
 
 function SignedOutApp() {
-  const [registering, setRegistering] = useState(false);
-  return registering ? (
-    <RegisterScreen onBack={() => setRegistering(false)} />
-  ) : (
-    <LoginScreen onRegister={() => setRegistering(true)} />
-  );
+  const [signedOutScreen, setSignedOutScreen] = useState<'Welcome' | 'Login' | 'Register'>('Welcome');
+  if (signedOutScreen === 'Register') {
+    return <RegisterScreen onBack={() => setSignedOutScreen('Login')} />;
+  }
+  if (signedOutScreen === 'Login') {
+    return <LoginScreen onRegister={() => setSignedOutScreen('Register')} />;
+  }
+  return <WelcomeScreen onStart={() => setSignedOutScreen('Login')} />;
 }
 
 function SignedInApp() {
   const [loggedScreen, setLoggedScreen] = useState<
-    'Home' | 'SearchRide' | 'OfferRide' | 'Messages' | 'Chat'
+    'Home' | 'SearchRide' | 'OfferRide' | 'Messages' | 'Chat' | 'Profile'
   >('Home');
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string>('');
 
   function renderScreen() {
     if (loggedScreen === 'Chat' && activeConversation && userId) {
@@ -99,11 +104,17 @@ function SignedInApp() {
       return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
     if (loggedScreen === 'OfferRide')
       return <OfferRideScreen onBack={() => setLoggedScreen('Home')} />;
+    if (loggedScreen === 'Profile')
+      return <ProfileScreen userId={profileUserId} onBack={() => setLoggedScreen('Home')} />;
     return (
       <HomeScreen
         onNavigateSearch={() => setLoggedScreen('SearchRide')}
         onNavigateOffer={() => setLoggedScreen('OfferRide')}
         onNavigateMessages={() => setLoggedScreen('Messages')}
+        onNavigateProfile={(selectedUserId) => {
+          setProfileUserId(selectedUserId);
+          setLoggedScreen('Profile');
+        }}
       />
     );
   }

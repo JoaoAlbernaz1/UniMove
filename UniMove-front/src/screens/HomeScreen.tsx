@@ -15,7 +15,6 @@ import {
   CarFront,
   ChevronRight,
   Clock3,
-  LogOut,
   MapPin,
   MessageCircle,
   Settings,
@@ -58,12 +57,14 @@ export function HomeScreen({
   onNavigateSearch,
   onNavigateOffer,
   onNavigateMessages,
+  onNavigateProfile,
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
   onNavigateMessages?: () => void;
+  onNavigateProfile?: (userId: string) => void;
 }) {
-  const { authApi, signOut, justRegistered } = useAuth();
+  const { authApi, justRegistered } = useAuth();
   const [me, setMe] = useState<HomeProfile | null>(null);
   const [upcomingRides, setUpcomingRides] = useState<Ride[]>([]);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -114,13 +115,6 @@ export function HomeScreen({
     Alert.alert(feature, description);
   }
 
-  function confirmSignOut() {
-    Alert.alert('Sair da conta', 'Deseja realmente encerrar sua sessão?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => void signOut() },
-    ]);
-  }
-
   const firstName = me?.fullName.trim().split(/\s+/)[0];
   const initials = me?.fullName
     .trim()
@@ -165,15 +159,15 @@ export function HomeScreen({
                   <Bell size={20} color={colors.white} />
                 </Pressable>
                 <Pressable
-                  onPress={confirmSignOut}
+                  onPress={() => onNavigateProfile?.(me?.id ?? '')}
                   style={styles.avatar}
                   accessibilityRole="button"
-                  accessibilityLabel="Sair da conta"
+                  accessibilityLabel="Abrir perfil"
                 >
                   {initials ? (
                     <Text style={styles.avatarText}>{initials}</Text>
                   ) : (
-                    <LogOut size={18} color={colors.white} />
+                    <Text style={styles.avatarText}>?</Text>
                   )}
                 </Pressable>
               </View>
