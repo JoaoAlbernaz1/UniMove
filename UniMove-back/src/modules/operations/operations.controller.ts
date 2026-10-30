@@ -8,6 +8,8 @@ import {
   IncidentStatus,
   IncidentType,
   NotificationType,
+  ReservationStatus,
+  RideStatus,
   RoleName,
   UserStatus,
 } from '../../generated/prisma/enums';
@@ -46,12 +48,49 @@ export class HistoryController {
         destinationLocation: true,
         driver: { select: { id: true, fullName: true } },
         reservations: { include: { passenger: { select: { id: true, fullName: true } } } },
-        ratings: { where: { reviewerId: user.id } },
+        ratings: { where: { OR: [{ reviewerId: user.id }, { reviewedUserId: user.id }] } },
       },
       orderBy: { departureAt: 'desc' },
       skip: (page.page - 1) * page.limit,
       take: page.limit,
     });
+  }
+
+  // Totais do histórico. Ganhos e gastos contam só viagens concluídas: uma
+  // carona futura ainda não virou dinheiro. O total acompanha a lista acima.
+  @Get('summary') async summary(@CurrentUser() user: AuthUser) {
+    const paid = { in: [ReservationStatus.CONFIRMED, ReservationStatus.COMPLETED] };
+    const [totalRides, drivenRides, reservations] = await Promise.all([
+      this.prisma.ride.count({
+        where: {
+          OR: [{ driverId: user.id }, { reservations: { some: { passengerId: user.id } } }],
+        },
+      }),
+      this.prisma.ride.findMany({
+        where: { driverId: user.id, status: RideStatus.COMPLETED },
+        select: {
+          pricePerPersonCents: true,
+          reservations: { where: { status: paid }, select: { seats: true } },
+        },
+      }),
+      this.prisma.rideReservation.findMany({
+        where: { passengerId: user.id, status: paid, ride: { status: RideStatus.COMPLETED } },
+        select: { seats: true, ride: { select: { pricePerPersonCents: true } } },
+      }),
+    ]);
+
+    const seatsTaken = (rows: { seats: number }[]) => rows.reduce((total, r) => total + r.seats, 0);
+    return {
+      totalRides,
+      earningsCents: drivenRides.reduce(
+        (total, ride) => total + ride.pricePerPersonCents * seatsTaken(ride.reservations),
+        0,
+      ),
+      spendingCents: reservations.reduce(
+        (total, r) => total + r.ride.pricePerPersonCents * r.seats,
+        0,
+      ),
+    };
   }
 }
 @ApiBearerAuth()
