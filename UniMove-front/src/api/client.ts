@@ -13,14 +13,13 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(
+export async function apiResponse(
   path: string,
   init: RequestInit & { token?: string } = {},
-): Promise<T> {
+): Promise<Response> {
   const { token, headers, ...rest } = init;
-  let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    return await fetch(`${API_URL}${path}`, {
       ...rest,
       headers: {
         ...(rest.body instanceof FormData
@@ -33,17 +32,27 @@ export async function api<T>(
   } catch {
     throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
   }
+}
 
+export async function throwApiResponseError(response: Response): Promise<never> {
   const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    // O backend responde { message: string | string[] } em português.
-    const message = Array.isArray(body?.message)
-      ? body.message[0]
-      : body?.message;
+  const message = Array.isArray(body?.message) ? body.message[0] : body?.message;
+  throw new ApiError(
+    message ?? 'Algo deu errado. Tente novamente.',
+    response.status,
+  );
+}
+
+export async function api<T>(
+  path: string,
+  init: RequestInit & { token?: string } = {},
+): Promise<T> {
+  const response = await apiResponse(path, init);
+  const body = await response.json().catch(() => null);
+  if (!response.ok)
     throw new ApiError(
-      message ?? 'Algo deu errado. Tente novamente.',
+      Array.isArray(body?.message) ? body.message[0] : body?.message ?? 'Algo deu errado. Tente novamente.',
       response.status,
     );
-  }
   return body as T;
 }

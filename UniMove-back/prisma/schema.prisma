@@ -84,6 +84,7 @@ enum IncidentStatus {
 model User {
   id                 String            @id @default(uuid()) @db.Uuid
   fullName           String            @map("full_name")
+  studentNumber      String?           @unique @map("student_number") @db.VarChar(10)
   course             String?
   semester           Int?
   bio                String?
@@ -102,6 +103,7 @@ model User {
   roles              UserRole[]
   vehicles           Vehicle[]
   driverLicense      DriverLicense?
+  profilePhoto       ProfilePhoto?
   routeTemplates     RouteTemplate[]
   drivenRides        Ride[]            @relation("RideDriver")
   rideRequests       RideRequest[]
@@ -166,6 +168,18 @@ model DriverLicense {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("driver_licenses")
+}
+
+model ProfilePhoto {
+  userId    String   @id @map("user_id") @db.Uuid
+  image     Bytes
+  mimeType  String   @default("image/jpeg") @map("mime_type")
+  sizeBytes Int      @map("size_bytes")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profile_photos")
 }
 
 model Vehicle {
