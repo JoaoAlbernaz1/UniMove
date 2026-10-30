@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: unimove-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: unimove
+      POSTGRES_PASSWORD: unimove_dev
+      POSTGRES_DB: unimove
+    ports:
+      - '5432:5432'
+    volumes:
+      - unimove-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U unimove -d unimove']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  unimove-pgdata:

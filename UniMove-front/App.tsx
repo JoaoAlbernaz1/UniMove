@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import { HistoryScreen } from './src/screens/HistoryScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { MessagesScreen } from './src/screens/MessagesScreen';
@@ -152,6 +153,7 @@ function SignedInApp() {
     | 'Chat'
     | 'Profile'
     | 'RegisterVehicle'
+    | 'History'
     | 'Settings'
     | 'PersonalInfo'
   >('Home');
@@ -182,6 +184,8 @@ function SignedInApp() {
         />
       );
     }
+    if (loggedScreen === 'History')
+      return <HistoryScreen onBack={() => setLoggedScreen('Home')} />;
     if (loggedScreen === 'SearchRide')
       return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
     if (loggedScreen === 'OfferRide')
@@ -217,6 +221,7 @@ function SignedInApp() {
         onNavigateSearch={() => setLoggedScreen('SearchRide')}
         onNavigateOffer={() => setLoggedScreen('OfferRide')}
         onNavigateMessages={() => setLoggedScreen('Messages')}
+        onNavigateHistory={() => setLoggedScreen('History')}
         onNavigateProfile={(selectedUserId) => {
           setProfileUserId(selectedUserId);
           setLoggedScreen('Profile');
