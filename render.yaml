@@ -1,0 +1,61 @@
+# Blueprint do Render para a API do UniCarona.
+#
+# NENHUM SEGREDO ENTRA NESTE ARQUIVO: o repositório é público. A string do banco
+# é marcada com `sync: false` e preenchida no painel do Render; os segredos de
+# JWT são sorteados lá na primeira criação.
+#
+# Como usar: no Render, New > Blueprint, aponte para este repositório. Ao subir,
+# ele pede o valor de DATABASE_URL — cole a string do Supabase, porta 5432, com
+# os dois parâmetros:
+#
+#   ...supabase.com:5432/postgres?sslmode=require&uselibpqcompat=true
+#
+# O `uselibpqcompat=true` não é enfeite. Sem ele o driver pg trata `require`
+# como `verify-full`, não valida o certificado do pooler e toda consulta falha
+# com erro 500 — mesmo com a API subindo normalmente e o /health respondendo.
+#
+# O banco já existe e já está migrado; o start apenas confere.
+services:
+  - type: web
+    name: unimove-api
+    runtime: node
+    plan: free
+    # O banco Supabase está em ca-central-1 (Montreal). Ohio é a região gratuita
+    # mais próxima dele, o que encurta a ida e volta de cada consulta.
+    region: ohio
+    rootDir: UniMove-back
+    healthCheckPath: /health
+    buildCommand: npm ci && npm run prisma:generate && npm run build
+    # O plano gratuito não tem preDeployCommand, então a migração roda no start.
+    # `migrate deploy` é idempotente: com tudo aplicado, ele não faz nada.
+    startCommand: npm run prisma:deploy && npm run start:prod
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      # Colada no painel do Render, nunca aqui.
+      - key: DATABASE_URL
+        sync: false
+      # Precisam de 32 caracteres ou mais, senão a API se recusa a subir
+      # (validateEnvironment, em src/config/configuration.ts).
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRATION
+        value: 15m
+      - key: JWT_REFRESH_EXPIRATION
+        value: 30d
+      - key: ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS
+        value: ucb.edu.br
+      - key: MATCHING_TIME_TOLERANCE_MINUTES
+        value: "30"
+      - key: RIDE_REQUEST_EXPIRATION_MINUTES
+        value: "15"
+      - key: MAX_PAGE_SIZE
+        value: "100"
+      # Domínio do front publicado na Vercel. Sem isto o navegador bloqueia as
+      # chamadas da aplicação para a API.
+      - key: CORS_ORIGINS
+        value: https://unicarona-three.vercel.app
