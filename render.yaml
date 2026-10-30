@@ -25,7 +25,10 @@ services:
     region: ohio
     rootDir: UniMove-back
     healthCheckPath: /health
-    buildCommand: npm ci && npm run prisma:generate && npm run build
+    # --include=dev é obrigatório: NODE_ENV=production faz o npm pular as
+    # devDependencies, e o compilador (@nestjs/cli, typescript) mora lá. Sem
+    # isso o build morre em `sh: 1: nest: not found`.
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
     # O plano gratuito não tem preDeployCommand, então a migração roda no start.
     # `migrate deploy` é idempotente: com tudo aplicado, ele não faz nada.
     startCommand: npm run prisma:deploy && npm run start:prod
