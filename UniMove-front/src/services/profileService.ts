@@ -1,42 +1,73 @@
 import type { Me } from '../api/auth';
-import { mockProfileExtras, mockAchievements, mockReviews, mockStats } from '../mocks/profile';
 
 export type Profile = Me & {
-  isOwner: boolean;
-  status?: string;
-  createdAt?: string;
-  course: string;
-  semester: string;
-  bio: string;
-  avatarUrl: string | null;
+  status: string;
+  createdAt: string;
+  course: string | null;
+  semester: number | null;
+  bio: string | null;
   tags: string[];
+  profileCompletedAt: string | null;
+};
+export type ProfileInput = {
+  course: string;
+  semester: number;
+  bio: string;
+  tags: string[];
+  fullName?: string;
+};
+export type ProfilePolicy = {
+  course: { minLength: number; maxLength: number };
+  semester: { min: number; max: number };
+  bio: { minLength: number; maxLength: number };
+  tags: { min: number; max: number; minLength: number; maxLength: number };
+};
+export type ProfileStats = {
+  id: string;
+  value: number;
+  label: string;
+  icon: 'map' | 'calendar' | 'star';
+};
+export type Achievement = {
+  id: string;
+  title: string;
+  description: string;
+  icon: 'profile' | 'car' | 'passenger' | 'users' | 'trophy' | 'star';
+  unlocked: boolean;
+  progress: {
+    current: number;
+    target: number;
+    percentage: number | null;
+    label: string;
+  };
+};
+export type ProfileAchievements = {
+  items: Achievement[];
+  total: number;
+  unlockedCount: number;
+};
+export type ProfileReview = {
+  id: string;
+  reviewerName: string;
+  initials: string;
+  score: number;
+  comment: string;
+  date: string;
 };
 
-export type ProfileStats = (typeof mockStats)[number];
-export type Achievement = (typeof mockAchievements)[number];
-export type ProfileReview = (typeof mockReviews)[number];
-export type UpdateProfileInput = Pick<Profile, 'fullName' | 'bio' | 'tags'>;
-
-let editableMocks = { ...mockProfileExtras, tags: [...mockProfileExtras.tags] };
 type AuthApi = <T>(path: string, init?: RequestInit) => Promise<T>;
-
-export async function getProfile(authApi: AuthApi, userId: string): Promise<Profile> {
-  const me = await authApi<Me & { status?: string; createdAt?: string }>('/users/me');
-  if (me.id !== userId) {
-    return { ...me, id: userId, isOwner: false, fullName: 'Usuário', institutionalEmail: '', ...editableMocks };
-  }
-  return { ...me, isOwner: true, ...editableMocks };
+export function getMyProfile(authApi: AuthApi) {
+  return authApi<Profile>('/users/me');
 }
-
-export async function updateProfile(authApi: AuthApi, input: UpdateProfileInput): Promise<Profile> {
-  const updated = await authApi<Me>('/users/me', {
+export function getProfileAchievements(authApi: AuthApi) {
+  return authApi<ProfileAchievements>('/users/me/achievements');
+}
+export function getProfilePolicy(authApi: AuthApi) {
+  return authApi<ProfilePolicy>('/users/me/profile-policy');
+}
+export function updateProfile(authApi: AuthApi, input: ProfileInput) {
+  return authApi<Profile>('/users/me/profile', {
     method: 'PATCH',
-    body: JSON.stringify({ fullName: input.fullName }),
+    body: JSON.stringify(input),
   });
-  editableMocks = { ...editableMocks, bio: input.bio, tags: [...input.tags] };
-  return { ...updated, isOwner: true, ...editableMocks };
 }
-
-export async function getProfileStats(): Promise<ProfileStats[]> { return [...mockStats]; }
-export async function getProfileAchievements(): Promise<Achievement[]> { return [...mockAchievements]; }
-export async function getProfileReviews(): Promise<ProfileReview[]> { return [...mockReviews]; }

@@ -1,3 +1,4 @@
+import { MAX_PASSENGER_CAPACITY } from '../vehicles/vehicle-policy';
 import { Controller, Get, Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsDateString, IsInt, IsUUID, Matches, Max, Min } from 'class-validator';
@@ -10,7 +11,7 @@ class SearchDto {
   @IsUUID() destinationLocationId!: string;
   @IsDateString() date!: string;
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) departureTime!: string;
-  @Type(() => Number) @IsInt() @Min(1) @Max(8) seats = 1;
+  @Type(() => Number) @IsInt() @Min(1) @Max(MAX_PASSENGER_CAPACITY) seats = 1;
 }
 const weekdays: Weekday[] = [
   Weekday.SUNDAY,
@@ -35,6 +36,7 @@ export class MatchingController {
     const routes = await this.prisma.routeTemplate.findMany({
       where: {
         active: true,
+        driver: { driverLicense: { isNot: null } },
         originLocationId: dto.originLocationId,
         destinationLocationId: dto.destinationLocationId,
         availableSeats: { gte: dto.seats },

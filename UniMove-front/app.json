@@ -36,7 +36,15 @@
     "plugins": [
       "expo-font",
       "expo-secure-store",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permita selecionar a foto da sua CNH para cadastrar seu carro.",
+          "cameraPermission": "Permita tirar uma foto da sua CNH para cadastrar seu carro.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

@@ -16,6 +16,10 @@ import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import { UserStatus } from '../../generated/prisma/enums';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { AllowIncompleteProfile } from '../../common/decorators/profile.decorators';
+import { CompleteProfileDto } from './profile.dto';
+import { PROFILE_POLICY, profileSelect } from './profile-policy';
+import { AchievementsService } from './achievements.service';
 
 class UpdateMeDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -31,20 +35,33 @@ class ChangePasswordDto {
 }
 
 @ApiBearerAuth()
+@AllowIncompleteProfile()
 @Controller('users/me')
 export class UsersController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly achievements: AchievementsService,
+  ) {}
+  @Get('achievements') listAchievements(@CurrentUser() user: AuthUser) {
+    return this.achievements.list(user.id);
+  }
+  @Get('profile-policy') policy() {
+    return PROFILE_POLICY;
+  }
   @Get() me(@CurrentUser() user: AuthUser) {
     return this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      select: {
-        id: true,
-        fullName: true,
-        institutionalEmail: true,
-        status: true,
-        createdAt: true,
-        roles: { select: { role: { select: { name: true } } } },
-      },
+      select: profileSelect,
+    });
+  }
+  @Patch('profile') completeProfile(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CompleteProfileDto,
+  ) {
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: { ...dto, profileCompletedAt: new Date() },
+      select: profileSelect,
     });
   }
   @Patch() update(@CurrentUser() user: AuthUser, @Body() dto: UpdateMeDto) {

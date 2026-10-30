@@ -14,6 +14,7 @@ describe('Publicação de carona avulsa', () => {
   const routeCreate = jest.fn();
   const rideCreate = jest.fn();
   const tx = {
+    driverLicense: { findUnique: jest.fn() },
     vehicle: { findFirst: vehicleFind },
     location: { count: locationCount },
     routeTemplate: { create: routeCreate },
@@ -39,6 +40,7 @@ describe('Publicação de carona avulsa', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    tx.driverLicense.findUnique.mockResolvedValue({ userId: 'driver-id' });
     vehicleFind.mockResolvedValue({ passengerCapacity: 4 });
     locationCount.mockResolvedValue(2);
     routeCreate.mockResolvedValue({ id: 'route-id' });
@@ -94,6 +96,12 @@ describe('Publicação de carona avulsa', () => {
     expect(rideCreate).not.toHaveBeenCalled();
   });
 
+  it('exige foto da CNH mesmo com token de motorista existente', async () => {
+    tx.driverLicense.findUnique.mockResolvedValue(null);
+    await expect(service.create('driver-id', input)).rejects.toBeInstanceOf(BadRequestException);
+    expect(rideCreate).not.toHaveBeenCalled();
+  });
+
   it('recusa locais inexistentes ou inativos', async () => {
     locationCount.mockResolvedValue(1);
     await expect(service.create('driver-id', input)).rejects.toBeInstanceOf(BadRequestException);
@@ -126,9 +134,21 @@ describe('Publicação de carona avulsa', () => {
     expect(await validate(plainToInstance(CreateRideDto, input))).toHaveLength(0);
   });
 
+  it('publica seis vagas quando o veículo comporta seis passageiros', async () => {
+    const sixSeats = { ...input, availableSeats: 6 };
+    vehicleFind.mockResolvedValue({ passengerCapacity: 6 });
+    expect(await validate(plainToInstance(CreateRideDto, sixSeats))).toHaveLength(0);
+    await service.create('driver-id', sixSeats);
+    expect(rideCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ totalSeats: 6, availableSeats: 6 }),
+      }),
+    );
+  });
+
   it.each([
     { availableSeats: 0 },
-    { availableSeats: 5 },
+    { availableSeats: 7 },
     { availableSeats: 1.5 },
     { pricePerPersonCents: -1 },
     { pricePerPersonCents: 1.5 },

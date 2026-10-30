@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { PublishedRide, RideLocation, RideVehicle } from '../api/rides';
+import { getVehicleRegistrationPolicy, type VehicleRegistrationPolicy } from '../api/vehicles';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/Button';
 import { Message } from '../components/Message';
@@ -45,6 +46,7 @@ export function OfferRideScreen({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState<OfferRideDraft>(initialOfferRide);
   const [locations, setLocations] = useState<RideLocation[]>([]);
   const [vehicles, setVehicles] = useState<RideVehicle[]>([]);
+  const [vehiclePolicy, setVehiclePolicy] = useState<VehicleRegistrationPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -59,11 +61,13 @@ export function OfferRideScreen({ onBack }: { onBack: () => void }) {
     Promise.all([
       authApi<RideLocation[]>('/locations'),
       authApi<RideVehicle[]>('/vehicles'),
+      getVehicleRegistrationPolicy(authApi),
     ])
-      .then(([nextLocations, nextVehicles]) => {
+      .then(([nextLocations, nextVehicles, nextPolicy]) => {
         if (active) {
           setLocations(nextLocations);
           setVehicles(nextVehicles);
+          setVehiclePolicy(nextPolicy);
         }
       })
       .catch((error: unknown) => {
@@ -299,11 +303,11 @@ export function OfferRideScreen({ onBack }: { onBack: () => void }) {
                 <View style={styles.section}>
                   <Text style={styles.label}>Vagas Disponíveis</Text>
                   <View
-                    style={styles.row}
+                    style={styles.seatRow}
                     accessibilityRole="radiogroup"
                     accessibilityLabel="Vagas disponíveis"
                   >
-                    {[1, 2, 3, 4].map((seats) => {
+                    {Array.from({ length: vehiclePolicy ? vehiclePolicy.maxPassengerCapacity - vehiclePolicy.minPassengerCapacity + 1 : 0 }, (_, index) => index + (vehiclePolicy?.minPassengerCapacity ?? 0)).map((seats) => {
                       const selected = draft.availableSeats === seats;
                       const disabled =
                         publishing ||
@@ -466,9 +470,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   row: { flexDirection: 'row', gap: 12 },
+  seatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   half: { flex: 1, minWidth: 0 },
   seat: {
     flex: 1,
+    flexBasis: '28%',
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',

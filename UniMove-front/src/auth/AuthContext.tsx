@@ -21,6 +21,7 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: authApi.RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   // Chamada autenticada: renova o access token (15 min) sozinha quando expira.
   authApi: <T>(path: string, init?: RequestInit) => Promise<T>;
 };
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [storeTokens],
   );
 
-  // UC01 passos 12–13: depois de salvar o usuário, entra direto na Home.
+  // Depois do cadastro, a sessão inicia e a tela obrigatória completa o perfil.
   const signUp = useCallback(
     async (input: authApi.RegisterInput) => {
       await authApi.register(input);
@@ -122,9 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [renew],
   );
 
+  const refreshSession = useCallback(async () => {
+    if (!(await renew())) throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
+  }, [renew]);
+
   const value = useMemo(
-    () => ({ status, justRegistered, signIn, signUp, signOut, authApi: authenticatedApi }),
-    [status, justRegistered, signIn, signUp, signOut, authenticatedApi],
+    () => ({ status, justRegistered, signIn, signUp, signOut, refreshSession, authApi: authenticatedApi }),
+    [status, justRegistered, signIn, signUp, signOut, refreshSession, authenticatedApi],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

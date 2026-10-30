@@ -40,7 +40,7 @@ Swagger: `http://localhost:3000/docs`. Health: `http://localhost:3000/health`.
 
 `POST /api/v1/rides` exige autenticação e perfil `DRIVER`. O corpo contém
 `vehicleId`, `originLocationId`, `destinationLocationId`, `departureAt` (ISO 8601
-com offset ou `Z`), `timezone` (IANA), `availableSeats` (1–4),
+com offset ou `Z`), `timezone` (IANA), `availableSeats` (1–6),
 `pricePerPersonCents` (inteiro de 0 a 1.000.000), `acceptsLuggage`, `allowsMusic`,
 `acceptsPets` e, opcionalmente, `additionalInfo` (até 1.000 caracteres).
 
@@ -53,6 +53,70 @@ A migração `202610280001_offer_ride` adiciona preço, observações e preferê
 à tabela `rides`, com valores padrão para os registros existentes. Para outros
 ambientes, execute `npm run prisma:deploy` e `npm run prisma:generate` antes de
 iniciar a versão atualizada. Os testes da publicação rodam com `npm test`.
+
+## Conquistas
+
+`GET /api/v1/users/me/achievements` retorna as oito conquistas do usuário
+autenticado, com `items`, `total` e `unlockedCount`. Cada item tem título,
+descrição, ícone, `unlocked` e progresso calculado no servidor. O endpoint é
+somente leitura e usa uma consulta agregada consistente, sem alterar o histórico
+nem exigir nova migração. Critérios completos: `docs/sugestoes-conquistas.md`.
+Conta apenas viagens concluídas compartilhadas, exclui reservas canceladas e
+ausências, deduplica viagens e participantes e verifica origem das avaliações.
+
+## Perfil obrigatório
+
+Antes das demais funcionalidades, a conta precisa concluir o perfil em
+`PATCH /api/v1/users/me/profile`, com `course`, `semester` (inteiro), `bio` e
+`tags` (de 3 a 10 textos distintos, sem diferenciar maiúsculas/minúsculas).
+O campo `fullName` é opcional nessa atualização. A rota recebe o conjunto completo
+dos dados, inclusive na edição, impedindo remover os obrigatórios depois.
+`GET /api/v1/users/me/profile-policy` fornece limites e orientações ao formulário.
+`GET /api/v1/users/me` retorna os dados reais e `profileCompletedAt`.
+
+A migração `202610290003_required_profile` adiciona os campos sem preencher dados
+fictícios em contas antigas. Enquanto `profileCompletedAt` for nulo, o guard da
+API responde 403 com código `PROFILE_INCOMPLETE` nas demais funcionalidades.
+Autenticação e gestão da própria conta permanecem acessíveis. Após concluir,
+o mesmo token já pode acessar as funcionalidades; não é necessário novo login.
+
+## Cadastro de veículos e habilitação de motorista
+
+`POST /api/v1/vehicles` recebe `multipart/form-data`, com o campo `data` contendo
+JSON de `brand`, `model`, `color`, `plate`, `year` e `passengerCapacity`, e o arquivo
+`driverLicense` (foto da CNH). A conta autenticada recebe o veículo e o papel `DRIVER`
+na mesma transação, mantendo o papel `PASSENGER`. Não há criação de outra conta.
+O cliente deve renovar o token em `POST /api/v1/auth/refresh` após o cadastro
+para atualizar as permissões de publicação.
+
+`GET /api/v1/vehicles/registration-policy` fornece os limites para o formulário:
+de 1 a 6 vagas para passageiros e ano do modelo de 1990 até o ano atual mais um.
+O ano atual é calculado no fuso `America/Sao_Paulo` a cada validação e consulta,
+sem depender de reinício do servidor. A placa aceita formato antigo ou Mercosul
+e é normalizada em maiúsculas, sem espaços/hífen; placas duplicadas retornam 409.
+Rotas, publicações e solicitações também têm limite de seis passageiros.
+A migração `202610290002_driver_license_upload` cria `driver_licenses` com RLS
+sem políticas públicas. A imagem é reencodificada em JPEG, limitada a 2000 pixels
+no maior lado e armazenada como bytes no PostgreSQL privado, sem diretório ou URL
+pública. O upload aceita JPEG/PNG/WebP de até 5 MB e remove metadados. Não há
+OCR, checagem documental, validade ou aprovação manual; imagem enviada libera
+a publicação imediatamente quando os demais dados são válidos.
+
+`PATCH /api/v1/vehicles/:id` usa o mesmo multipart e permite editar os dados do veículo pertencente
+à conta autenticada, com as mesmas regras do cadastro. Marca e modelo rejeitam
+emojis; cor permite letras Unicode, espaços e hífen. A política do formulário
+também retorna `fieldMaxLengths`. Não é permitido reduzir a capacidade abaixo
+das vagas oferecidas em caronas ou rotas ainda ativas.
+
+CNH é vinculada à conta: se já existe foto, não é preciso reenviá-la. Um novo
+arquivo substitui o anterior na mesma transação de gravação. A rota autenticada
+`GET /api/v1/vehicles/driver-license` retorna apenas presença/data de envio do
+próprio usuário, sem bytes da imagem. Fotos não aparecem nas consultas de caronas.
+Contas antigas precisam anexar CNH em **Editar carro** para publicar novas ofertas.
+As regras de publicação avulsa, criação de rotas e matching recorrente exigem a foto.
+Armazenar imagens no PostgreSQL atende o protótipo sem outro serviço; em escala,
+o conteúdo deve ser movido para object storage privado. A proposta de análise
+futura está em `docs/proposta-verificacao-cnh.md` na raiz do repositório.
 
 ## Mensagens
 

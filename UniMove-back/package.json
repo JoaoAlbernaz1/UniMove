@@ -48,7 +48,8 @@
     "passport-jwt": "latest",
     "pg": "latest",
     "reflect-metadata": "latest",
-    "rxjs": "latest"
+    "rxjs": "latest",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "latest",
@@ -59,6 +60,7 @@
     "@types/cookie-parser": "latest",
     "@types/express": "latest",
     "@types/jest": "latest",
+    "@types/multer": "^2.3.0",
     "@types/node": "latest",
     "@types/passport-jwt": "latest",
     "@types/pg": "latest",

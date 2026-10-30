@@ -1,5 +1,7 @@
+import { MAX_PASSENGER_CAPACITY } from '../vehicles/vehicle-policy';
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -31,11 +33,11 @@ class CreateRouteTemplateDto {
   @IsUUID() destinationLocationId!: string;
   @IsArray() @ArrayNotEmpty() weekdays!: Weekday[];
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) departureTime!: string;
-  @IsInt() @Min(1) @Max(8) availableSeats!: number;
+  @IsInt() @Min(1) @Max(MAX_PASSENGER_CAPACITY) availableSeats!: number;
   @IsOptional() @IsString() timezone?: string;
 }
 class UpdateRouteTemplateDto {
-  @IsOptional() @IsInt() @Min(1) @Max(8) availableSeats?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(MAX_PASSENGER_CAPACITY) availableSeats?: number;
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) departureTime?: string;
 }
 
@@ -44,6 +46,15 @@ class UpdateRouteTemplateDto {
 export class RouteTemplatesController {
   constructor(private readonly prisma: PrismaService) {}
   @Post() async create(@CurrentUser() user: AuthUser, @Body() dto: CreateRouteTemplateDto) {
+    if (
+      !(await this.prisma.driverLicense.findUnique({
+        where: { userId: user.id },
+        select: { userId: true },
+      }))
+    )
+      throw new BadRequestException(
+        'Envie a foto da CNH na edição do carro antes de oferecer carona.',
+      );
     const vehicle = await this.prisma.vehicle.findFirst({
       where: { id: dto.vehicleId, ownerId: user.id, active: true },
     });

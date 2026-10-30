@@ -24,6 +24,7 @@ type Props = {
   hideLabel?: boolean;
   disabled?: boolean;
   error?: string;
+  presentation?: 'modal' | 'dropdown';
 };
 
 export function SelectionField({
@@ -37,33 +38,68 @@ export function SelectionField({
   hideLabel,
   disabled,
   error,
+  presentation = 'modal',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
+  const [focusedOption, setFocusedOption] = useState<string | null>(null);
+  const expanded = open && !disabled;
   const selected = options.find((option) => option.value === value);
   const filtered = options.filter((option) =>
     option.label
       .toLocaleLowerCase('pt-BR')
       .includes(query.trim().toLocaleLowerCase('pt-BR')),
   );
+
+  function renderOption(option: Option) {
+    return (
+      <Pressable
+        key={option.value}
+        accessibilityRole="radio"
+        accessibilityLabel={option.label}
+        accessibilityState={{ checked: option.value === value }}
+        onFocus={() => setFocusedOption(option.value)}
+        onBlur={() => setFocusedOption(null)}
+        onPress={() => {
+          onChange(option.value);
+          setOpen(false);
+          setFocusedOption(null);
+        }}
+        style={({ pressed }) => [
+          styles.option,
+          presentation === 'dropdown' &&
+            option.value === value &&
+            styles.selectedOption,
+          focusedOption === option.value && styles.selectedOption,
+          pressed && styles.dimmed,
+        ]}
+      >
+        <Text style={styles.value}>{option.label}</Text>
+        {option.value === value ? (
+          <Check color={colors.accentDark} size={20} />
+        ) : null}
+      </Pressable>
+    );
+  }
   return (
     <View style={styles.field}>
       {!hideLabel ? <Text style={styles.label}>{label}</Text> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${selected?.label ?? placeholder}`}
-        accessibilityState={{ disabled: !!disabled, expanded: open }}
+        accessibilityState={{ disabled: !!disabled, expanded }}
         disabled={disabled}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onPress={() => {
           setQuery('');
-          setOpen(true);
+          setOpen((current) => !current);
         }}
         style={({ pressed }) => [
           styles.box,
           focused && styles.focused,
+          expanded && styles.focused,
           !!error && styles.invalid,
           (disabled || pressed) && styles.dimmed,
         ]}
@@ -75,15 +111,28 @@ export function SelectionField({
         >
           {selected?.label ?? placeholder}
         </Text>
-        <ChevronDown size={14} color={colors.muted} />
+        <ChevronDown
+          size={14}
+          color={colors.muted}
+          style={expanded ? styles.chevronOpen : undefined}
+        />
       </Pressable>
+      {presentation === 'dropdown' && expanded ? (
+        <View
+          style={styles.dropdown}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={label}
+        >
+          {options.map(renderOption)}
+        </View>
+      ) : null}
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {error}
         </Text>
       ) : null}
       <Modal
-        visible={open}
+        visible={presentation === 'modal' && expanded}
         transparent
         animationType="fade"
         onRequestClose={() => setOpen(false)}
@@ -115,26 +164,7 @@ export function SelectionField({
               keyboardShouldPersistTaps="handled"
               style={styles.options}
             >
-              {filtered.map((option) => (
-                <Pressable
-                  key={option.value}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: option.value === value }}
-                  onPress={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.option,
-                    pressed && styles.dimmed,
-                  ]}
-                >
-                  <Text style={styles.value}>{option.label}</Text>
-                  {option.value === value ? (
-                    <Check color={colors.accentDark} size={20} />
-                  ) : null}
-                </Pressable>
-              ))}
+              {filtered.map(renderOption)}
               {!filtered.length ? (
                 <Text style={styles.empty}>Nenhuma opção encontrada.</Text>
               ) : null}
@@ -167,6 +197,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   focused: { borderColor: colors.accentDark },
+  chevronOpen: { transform: [{ rotate: '180deg' }] },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius,
+    backgroundColor: colors.white,
+    paddingHorizontal: 12,
+    overflow: 'hidden',
+  },
+  selectedOption: { backgroundColor: colors.accentBg },
   invalid: { borderColor: colors.destructive },
   dimmed: { opacity: 0.6 },
   value: {

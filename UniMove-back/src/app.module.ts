@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { configuration, validateEnvironment } from './config/configuration';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { ProfileCompleteGuard } from './common/guards/profile-complete.guard';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -41,6 +42,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ProfileCompleteGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: RequestLoggingInterceptor },
   ],

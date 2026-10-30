@@ -31,10 +31,19 @@ A faixa pausa enquanto o usuário mantém o dedo pressionado e retoma ao soltar
 A preferência por movimento reduzido mantém a faixa pausada, e o movimento é
 suspenso quando o app vai para segundo plano.
 
+### Mapa
+
+`OpenFreeMap` compartilha o documento HTML do mapa entre as plataformas.
+`MapDocument.tsx` usa `react-native-webview` no Android/iOS, e
+`MapDocument.web.tsx` usa um `iframe` no navegador. O Metro seleciona a versão
+correta automaticamente. Após atualizar as dependências do repositório, execute
+`npm ci`; se o Metro ainda mostrar um módulo ausente, reinicie com
+`npm run web -- --clear`.
+
 ### Oferecer carona
 
 O cartão **Oferecer carona** da Home abre o formulário baseado no protótipo. A tela
-consulta `GET /locations` e `GET /vehicles`, permite escolher de uma a quatro vagas
+consulta `GET /locations`, `GET /vehicles` e `GET /vehicles/registration-policy`, permite escolher de uma a seis vagas
 (respeitando a capacidade do veículo) e publica em `POST /rides`. A conta precisa
 ter um veículo ativo cadastrado e o perfil de motorista.
 
@@ -47,6 +56,52 @@ confirma a publicação depois da resposta da API. Ao concluir, voltar ao iníci
 recarrega as caronas da Home. Sem locais ou veículos, a tela informa o requisito.
 
 Verificações: `npm run typecheck`, `npm test` e `npm run lint`.
+
+### Cadastro de carro pelo perfil
+
+Após criar conta, entrar ou retomar a sessão, o app consulta o perfil no backend.
+Se ele não estiver completo, a tela **Complete seu perfil** exige curso, período
+atual, Sobre e pelo menos três tags diferentes. As tags são escritas e adicionadas
+pelo usuário, com limites recebidos de `GET /users/me/profile-policy`.
+Os dados são salvos em `PATCH /users/me/profile` antes de abrir a Home.
+Contas anteriores também precisam preencher os campos; não há preenchimento
+automático com os antigos dados de demonstração.
+
+O perfil exibe somente os dados persistidos. A edição reutiliza o mesmo formulário,
+com as mesmas exigências, e também permite alterar o nome. Notas, avaliações,
+estatísticas e conquistas de demonstração foram retiradas da tela.
+
+**Conquistas** consulta `GET /users/me/achievements` e apresenta somente os itens
+marcados pelo backend como obtidos, com ícone e título em cartões compactos.
+Abrir o perfil ou atualizar a tela recalcula os dados; falhas mostram
+mensagem com tentativa novamente. O frontend apenas apresenta as regras e
+resultados enviados pela API. Critérios em `docs/sugestoes-conquistas.md`.
+
+**Perfil → Cadastre seu carro** abre o cadastro de marca, modelo, cor, placa,
+ano do modelo e vagas para passageiros. O formulário consulta os limites em
+`GET /vehicles/registration-policy`; a validação das regras ocorre no backend.
+O ano vai de 1990 até o ano atual em Brasília mais um, e a capacidade de 1 a 6
+passageiros, sem contar o motorista. Placas antigas e Mercosul são aceitas.
+
+`POST /vehicles` vincula o carro à conta autenticada e acrescenta o papel
+`DRIVER`, preservando `PASSENGER`, na mesma transação. Após salvar, o app renova
+a sessão para oferecer carona imediatamente. Se a renovação falhar, o botão
+**Atualizar acesso** tenta novamente sem cadastrar o carro outra vez.
+
+Quando já existe veículo ativo, o perfil exibe **Editar carro** e o formulário
+carrega os dados para salvar em `PATCH /vehicles/:id`. Se houver vários veículos,
+um dropdown permite escolher qual editar. Ano aceita somente quatro dígitos;
+placa é convertida para maiúsculas, sem separadores, com sete caracteres; cor
+aceita letras, espaços e hífen; marca/modelo removem emojis durante a digitação.
+Os limites de tamanho vêm da API e todas as validações são repetidas no backend.
+
+O formulário exige **Foto da CNH**, selecionada da galeria ou capturada pela câmera
+no celular, com prévia antes do envio. São aceitos JPEG/PNG/WebP de até 5 MB.
+A foto e os dados são enviados juntos em multipart. Se a conta já enviou a foto,
+ela pode ser mantida ou substituída. A liberação é imediata, sem análise manual
+nem verificação de autenticidade/validade da CNH. Usuários anteriores enviam pela
+edição do carro. `expo-image-picker` exige nova build de desenvolvimento/EAS nos
+clientes nativos já distribuídos; a versão web usa o seletor do navegador.
 
 ### Filtros de busca
 

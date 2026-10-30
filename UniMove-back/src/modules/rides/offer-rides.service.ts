@@ -14,6 +14,15 @@ export class OfferRidesService {
       throw new BadRequestException('A origem e o destino devem ser diferentes.');
 
     return this.prisma.$transaction(async (tx) => {
+      if (
+        !(await tx.driverLicense.findUnique({
+          where: { userId: driverId },
+          select: { userId: true },
+        }))
+      )
+        throw new BadRequestException(
+          'Envie a foto da CNH na edição do carro antes de oferecer carona.',
+        );
       const vehicle = await tx.vehicle.findFirst({
         where: { id: dto.vehicleId, ownerId: driverId, active: true },
       });
