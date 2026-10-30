@@ -59,12 +59,14 @@ export function HomeScreen({
   onNavigateMessages,
   onNavigateHistory,
   onNavigateProfile,
+  onNavigateSettings,
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
   onNavigateMessages?: () => void;
   onNavigateHistory?: () => void;
   onNavigateProfile?: (userId: string) => void;
+  onNavigateSettings?: () => void;
 }) {
   const { authApi, justRegistered } = useAuth();
   const [me, setMe] = useState<HomeProfile | null>(null);
@@ -291,12 +293,7 @@ export function HomeScreen({
                   <Text style={styles.quickLabel}>Histórico</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
-                    showComingSoon(
-                      'Configurações',
-                      'A tela ainda não foi implementada.',
-                    )
-                  }
+                  onPress={onNavigateSettings}
                   style={({ pressed }) => [
                     styles.quickItem,
                     pressed && styles.pressed,

@@ -25,6 +25,8 @@ import { SearchRideScreen } from './src/screens/SearchRideScreen';
 import { OfferRideScreen } from './src/screens/OfferRideScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { RegisterVehicleScreen } from './src/screens/RegisterVehicleScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { PersonalInfoScreen } from './src/screens/PersonalInfoScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
 import { AdvertisementBar } from './src/components/AdvertisementBar';
@@ -152,6 +154,8 @@ function SignedInApp() {
     | 'Profile'
     | 'RegisterVehicle'
     | 'History'
+    | 'Settings'
+    | 'PersonalInfo'
   >('Home');
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
@@ -201,6 +205,17 @@ function SignedInApp() {
           onOfferRide={() => setLoggedScreen('OfferRide')}
         />
       );
+    if (loggedScreen === 'Settings')
+      return (
+        <SettingsScreen
+          onBack={() => setLoggedScreen('Home')}
+          onNavigatePersonalInfo={() => setLoggedScreen('PersonalInfo')}
+        />
+      );
+    if (loggedScreen === 'PersonalInfo')
+      return (
+        <PersonalInfoScreen onBack={() => setLoggedScreen('Settings')} />
+      );
     return (
       <HomeScreen
         onNavigateSearch={() => setLoggedScreen('SearchRide')}
@@ -211,6 +226,7 @@ function SignedInApp() {
           setProfileUserId(selectedUserId);
           setLoggedScreen('Profile');
         }}
+        onNavigateSettings={() => setLoggedScreen('Settings')}
       />
     );
   }

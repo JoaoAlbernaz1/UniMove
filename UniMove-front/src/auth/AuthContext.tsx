@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import * as authApi from '../api/auth';
-import { api, ApiError } from '../api/client';
+import { api, apiResponse, ApiError } from '../api/client';
 import { tokenStorage } from './tokenStorage';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
@@ -24,6 +24,7 @@ type AuthContextValue = {
   refreshSession: () => Promise<void>;
   // Chamada autenticada: renova o access token (15 min) sozinha quando expira.
   authApi: <T>(path: string, init?: RequestInit) => Promise<T>;
+  authFetch: (path: string, init?: RequestInit) => Promise<Response>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -123,13 +124,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [renew],
   );
 
+  const authenticatedFetch = useCallback(
+    async (path: string, init: RequestInit = {}): Promise<Response> => {
+      let response = await apiResponse(path, {
+        ...init,
+        token: tokensRef.current?.accessToken,
+      });
+      if (response.status !== 401) return response;
+      const tokens = await renew();
+      if (!tokens)
+        throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
+      response = await apiResponse(path, { ...init, token: tokens.accessToken });
+      return response;
+    },
+    [renew],
+  );
+
   const refreshSession = useCallback(async () => {
     if (!(await renew())) throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
   }, [renew]);
 
   const value = useMemo(
-    () => ({ status, justRegistered, signIn, signUp, signOut, refreshSession, authApi: authenticatedApi }),
-    [status, justRegistered, signIn, signUp, signOut, refreshSession, authenticatedApi],
+    () => ({
+      status,
+      justRegistered,
+      signIn,
+      signUp,
+      signOut,
+      refreshSession,
+      authApi: authenticatedApi,
+      authFetch: authenticatedFetch,
+    }),
+    [status, justRegistered, signIn, signUp, signOut, refreshSession, authenticatedApi, authenticatedFetch],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
