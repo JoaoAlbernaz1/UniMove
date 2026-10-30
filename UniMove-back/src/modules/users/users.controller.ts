@@ -112,7 +112,16 @@ export class UsersController {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const current = await tx.user.findUniqueOrThrow({
+          where: { id: user.id },
+          select: { fullName: true, studentNumber: true },
+        });
+        const identityChanged =
+          (dto.fullName !== undefined && dto.fullName !== current.fullName) ||
+          (dto.studentNumber !== undefined && dto.studentNumber !== current.studentNumber);
         if (Object.keys(data).length) await tx.user.update({ where: { id: user.id }, data });
+        if (identityChanged)
+          await tx.academicVerification.deleteMany({ where: { userId: user.id } });
         if (photo)
           await tx.profilePhoto.upsert({
             where: { userId: user.id },
@@ -136,28 +145,51 @@ export class UsersController {
       select: profileSelect,
     });
   }
-  @Patch('profile') completeProfile(
+  @Patch('profile') async completeProfile(
     @CurrentUser() user: AuthUser,
     @Body() dto: CompleteProfileDto,
   ) {
-    return this.prisma.user.update({
-      where: { id: user.id },
-      data: { ...dto, profileCompletedAt: new Date() },
-      select: profileSelect,
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { fullName: true, course: true },
+      });
+      const identityChanged =
+        (dto.fullName !== undefined && dto.fullName !== current.fullName) ||
+        dto.course !== current.course;
+      const profile = await tx.user.update({
+        where: { id: user.id },
+        data: { ...dto, profileCompletedAt: new Date() },
+        select: profileSelect,
+      });
+      if (identityChanged) await tx.academicVerification.deleteMany({ where: { userId: user.id } });
+      return profile;
     });
   }
   @Patch() update(@CurrentUser() user: AuthUser, @Body() dto: UpdateMeDto) {
-    return this.prisma.user.update({
-      where: { id: user.id },
-      data: dto,
-      select: { id: true, fullName: true, institutionalEmail: true },
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { fullName: true },
+      });
+      const updated = await tx.user.update({
+        where: { id: user.id },
+        data: dto,
+        select: { id: true, fullName: true, institutionalEmail: true },
+      });
+      if (dto.fullName !== undefined && dto.fullName !== current.fullName)
+        await tx.academicVerification.deleteMany({ where: { userId: user.id } });
+      return updated;
     });
   }
   @Patch('password') async changePassword(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
   ) {
-    const account = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    const account = await this.prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { passwordHash: true },
+    });
     if (!(await argon2.verify(account.passwordHash, dto.currentPassword))) {
       throw new UnauthorizedException('Senha atual inválida.');
     }

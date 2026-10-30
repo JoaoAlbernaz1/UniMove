@@ -81,43 +81,53 @@ enum IncidentStatus {
   DISMISSED
 }
 
+enum AcademicVerificationStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
 model User {
-  id                 String            @id @default(uuid()) @db.Uuid
-  fullName           String            @map("full_name")
-  studentNumber      String?           @unique @map("student_number") @db.VarChar(10)
-  course             String?
-  semester           Int?
-  bio                String?
-  tags               String[]          @default([])
-  profileCompletedAt DateTime?         @map("profile_completed_at") @db.Timestamptz(3)
-  cpf                String            @unique
-  institutionalEmail String            @unique @map("institutional_email")
-  passwordHash       String            @map("password_hash")
-  termsAcceptedAt    DateTime?         @map("terms_accepted_at") @db.Timestamptz(3)
-  termsVersion       String?           @map("terms_version")
-  privacyPolicyVersion String?         @map("privacy_policy_version")
-  status             UserStatus        @default(ACTIVE)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt          DateTime?         @map("deleted_at") @db.Timestamptz(3)
-  roles              UserRole[]
-  vehicles           Vehicle[]
-  driverLicense      DriverLicense?
-  profilePhoto       ProfilePhoto?
-  routeTemplates     RouteTemplate[]
-  drivenRides        Ride[]            @relation("RideDriver")
-  rideRequests       RideRequest[]
-  reservations       RideReservation[]
-  ratingsGiven       Rating[]          @relation("RatingReviewer")
-  ratingsReceived    Rating[]          @relation("RatingReviewed")
-  notifications      Notification[]
-  messageConversations MessageConversation[] @relation("ConversationPassenger")
-  sentChatMessages   ChatMessage[]
-  incidentsReported  Incident[]        @relation("IncidentReporter")
-  incidentsAgainst   Incident[]        @relation("IncidentReportedUser")
-  cancellations      Cancellation[]
-  auditLogs          AuditLog[]
-  refreshSessions    RefreshSession[]
+  id                            String                      @id @default(uuid()) @db.Uuid
+  fullName                      String                      @map("full_name")
+  studentNumber                 String?                     @unique @map("student_number") @db.VarChar(10)
+  course                        String?
+  semester                      Int?
+  bio                           String?
+  tags                          String[]                    @default([])
+  profileCompletedAt            DateTime?                   @map("profile_completed_at") @db.Timestamptz(3)
+  cpf                           String                      @unique
+  institutionalEmail            String                      @unique @map("institutional_email")
+  institutionalEmailVerifiedAt  DateTime?                   @map("institutional_email_verified_at") @db.Timestamptz(3)
+  passwordHash                  String                      @map("password_hash")
+  termsAcceptedAt               DateTime?                   @map("terms_accepted_at") @db.Timestamptz(3)
+  termsVersion                  String?                     @map("terms_version")
+  privacyPolicyVersion          String?                     @map("privacy_policy_version")
+  status                        UserStatus                  @default(ACTIVE)
+  createdAt                     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                     DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt                     DateTime?                   @map("deleted_at") @db.Timestamptz(3)
+  roles                         UserRole[]
+  vehicles                      Vehicle[]
+  driverLicense                 DriverLicense?
+  profilePhoto                  ProfilePhoto?
+  emailVerificationChallenge    EmailVerificationChallenge?
+  academicVerification          AcademicVerification?
+  academicVerificationsReviewed AcademicVerification[]      @relation("AcademicVerificationReviewer")
+  routeTemplates                RouteTemplate[]
+  drivenRides                   Ride[]                      @relation("RideDriver")
+  rideRequests                  RideRequest[]
+  reservations                  RideReservation[]
+  ratingsGiven                  Rating[]                    @relation("RatingReviewer")
+  ratingsReceived               Rating[]                    @relation("RatingReviewed")
+  notifications                 Notification[]
+  messageConversations          MessageConversation[]       @relation("ConversationPassenger")
+  sentChatMessages              ChatMessage[]
+  incidentsReported             Incident[]                  @relation("IncidentReporter")
+  incidentsAgainst              Incident[]                  @relation("IncidentReportedUser")
+  cancellations                 Cancellation[]
+  auditLogs                     AuditLog[]
+  refreshSessions               RefreshSession[]
 
   @@map("users")
 }
@@ -180,6 +190,33 @@ model ProfilePhoto {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("profile_photos")
+}
+
+model EmailVerificationChallenge {
+  userId            String   @id @map("user_id") @db.Uuid
+  codeHash          String   @map("code_hash") @db.Char(64)
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
+  resendAvailableAt DateTime @map("resend_available_at") @db.Timestamptz(3)
+  attempts          Int      @default(0)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_challenges")
+}
+
+model AcademicVerification {
+  userId       String                     @id @map("user_id") @db.Uuid
+  reportGuid   String                     @unique @map("report_guid") @db.VarChar(36)
+  status       AcademicVerificationStatus @default(PENDING_REVIEW)
+  submittedAt  DateTime                   @default(now()) @map("submitted_at") @db.Timestamptz(3)
+  reviewedAt   DateTime?                  @map("reviewed_at") @db.Timestamptz(3)
+  reviewedById String?                    @map("reviewed_by_id") @db.Uuid
+  reviewNote   String?                    @map("review_note") @db.VarChar(500)
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?                      @relation("AcademicVerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, submittedAt])
+  @@map("academic_verifications")
 }
 
 model Vehicle {
@@ -251,31 +288,31 @@ model RouteTemplateWeekday {
 }
 
 model Ride {
-  id                    String            @id @default(uuid()) @db.Uuid
-  routeTemplateId       String            @map("route_template_id") @db.Uuid
-  driverId              String            @map("driver_id") @db.Uuid
-  vehicleId             String            @map("vehicle_id") @db.Uuid
-  originLocationId      String            @map("origin_location_id") @db.Uuid
-  destinationLocationId String            @map("destination_location_id") @db.Uuid
-  departureAt           DateTime          @map("departure_at") @db.Timestamptz(3)
-  totalSeats            Int               @map("total_seats")
-  pricePerPersonCents    Int               @default(0) @map("price_per_person_cents")
-  additionalInfo        String?           @map("additional_info") @db.VarChar(1000)
-  acceptsLuggage        Boolean           @default(true) @map("accepts_luggage")
-  allowsMusic           Boolean           @default(false) @map("allows_music")
-  acceptsPets           Boolean           @default(false) @map("accepts_pets")
-  availableSeats        Int               @map("available_seats")
-  status                RideStatus        @default(OPEN)
-  startedAt             DateTime?         @map("started_at") @db.Timestamptz(3)
-  completedAt           DateTime?         @map("completed_at") @db.Timestamptz(3)
-  cancelledAt           DateTime?         @map("cancelled_at") @db.Timestamptz(3)
-  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-  routeTemplate         RouteTemplate     @relation(fields: [routeTemplateId], references: [id], onDelete: Restrict)
-  driver                User              @relation("RideDriver", fields: [driverId], references: [id], onDelete: Restrict)
-  vehicle               Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
-  originLocation        Location          @relation("RideOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
-  destinationLocation   Location          @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  id                    String                @id @default(uuid()) @db.Uuid
+  routeTemplateId       String                @map("route_template_id") @db.Uuid
+  driverId              String                @map("driver_id") @db.Uuid
+  vehicleId             String                @map("vehicle_id") @db.Uuid
+  originLocationId      String                @map("origin_location_id") @db.Uuid
+  destinationLocationId String                @map("destination_location_id") @db.Uuid
+  departureAt           DateTime              @map("departure_at") @db.Timestamptz(3)
+  totalSeats            Int                   @map("total_seats")
+  pricePerPersonCents   Int                   @default(0) @map("price_per_person_cents")
+  additionalInfo        String?               @map("additional_info") @db.VarChar(1000)
+  acceptsLuggage        Boolean               @default(true) @map("accepts_luggage")
+  allowsMusic           Boolean               @default(false) @map("allows_music")
+  acceptsPets           Boolean               @default(false) @map("accepts_pets")
+  availableSeats        Int                   @map("available_seats")
+  status                RideStatus            @default(OPEN)
+  startedAt             DateTime?             @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime?             @map("completed_at") @db.Timestamptz(3)
+  cancelledAt           DateTime?             @map("cancelled_at") @db.Timestamptz(3)
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  routeTemplate         RouteTemplate         @relation(fields: [routeTemplateId], references: [id], onDelete: Restrict)
+  driver                User                  @relation("RideDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle               Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  originLocation        Location              @relation("RideOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
+  destinationLocation   Location              @relation("RideDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
   requests              RideRequest[]
   reservations          RideReservation[]
   conversations         MessageConversation[]

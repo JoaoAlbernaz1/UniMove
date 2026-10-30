@@ -19,6 +19,7 @@ import { RideRequestsModule } from './modules/ride-requests/ride-requests.module
 import { RidesModule } from './modules/rides/rides.module';
 import { RouteTemplatesModule } from './modules/route-templates/route-templates.module';
 import { UsersModule } from './modules/users/users.module';
+import { VerificationModule } from './modules/verification/verification.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     ChatModule,
     HealthModule,
     UsersModule,
+    VerificationModule,
     VehiclesModule,
     RouteTemplatesModule,
     MatchingModule,

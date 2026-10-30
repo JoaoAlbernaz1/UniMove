@@ -16,6 +16,11 @@ export type PersonalInfoChanges = {
   studentNumber?: string | null;
 };
 
+export type ChangePasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
 type AuthApi = <T>(path: string, init?: RequestInit) => Promise<T>;
 type AuthFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -71,5 +76,12 @@ export function updatePersonalInfo(
   return authApi<PersonalInfo>('/users/me/personal-info', {
     method: 'PATCH',
     body: personalInfoForm(changes, photo),
+  });
+}
+
+export function changePassword(authApi: AuthApi, input: ChangePasswordInput) {
+  return authApi<{ changed: boolean }>('/users/me/password', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
   });
 }

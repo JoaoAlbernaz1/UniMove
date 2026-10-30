@@ -19,7 +19,12 @@ export type Tokens = {
   expiresIn: number;
 };
 
-export type Me = { id: string; fullName: string; institutionalEmail: string };
+export type Me = {
+  id: string;
+  fullName: string;
+  institutionalEmail: string;
+  roles?: { role: { name: string } }[];
+};
 
 export function login(email: string, password: string) {
   return api<Tokens>('/auth/login', {
