@@ -57,11 +57,13 @@ export function HomeScreen({
   onNavigateSearch,
   onNavigateOffer,
   onNavigateMessages,
+  onNavigateHistory,
   onNavigateProfile,
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
   onNavigateMessages?: () => void;
+  onNavigateHistory?: () => void;
   onNavigateProfile?: (userId: string) => void;
 }) {
   const { authApi, justRegistered } = useAuth();
@@ -276,12 +278,7 @@ export function HomeScreen({
                   <Text style={styles.quickLabel}>Mensagens</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
-                    showComingSoon(
-                      'Histórico',
-                      'A consulta existe na API, mas a tela ainda não foi implementada.',
-                    )
-                  }
+                  onPress={onNavigateHistory}
                   style={({ pressed }) => [
                     styles.quickItem,
                     pressed && styles.pressed,
