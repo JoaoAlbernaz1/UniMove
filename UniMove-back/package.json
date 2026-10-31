@@ -46,6 +46,7 @@
     "helmet": "latest",
     "passport": "latest",
     "passport-jwt": "latest",
+    "pdf-parse": "^2.4.5",
     "pg": "latest",
     "reflect-metadata": "latest",
     "rxjs": "latest",
@@ -80,6 +81,9 @@
     "tsx": "latest",
     "typescript": "latest",
     "typescript-eslint": "latest"
+  },
+  "overrides": {
+    "multer": "2.5.0"
   },
   "jest": {
     "moduleFileExtensions": [

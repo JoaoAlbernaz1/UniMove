@@ -27,6 +27,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { RegisterVehicleScreen } from './src/screens/RegisterVehicleScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PersonalInfoScreen } from './src/screens/PersonalInfoScreen';
+import { AdminVerificationScreen } from './src/screens/AdminVerificationScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
 import { AdvertisementBar } from './src/components/AdvertisementBar';
@@ -156,6 +157,7 @@ function SignedInApp() {
     | 'History'
     | 'Settings'
     | 'PersonalInfo'
+    | 'AdminVerification'
   >('Home');
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
@@ -210,11 +212,16 @@ function SignedInApp() {
         <SettingsScreen
           onBack={() => setLoggedScreen('Home')}
           onNavigatePersonalInfo={() => setLoggedScreen('PersonalInfo')}
+          onNavigateAdminVerification={() =>
+            setLoggedScreen('AdminVerification')
+          }
         />
       );
     if (loggedScreen === 'PersonalInfo')
+      return <PersonalInfoScreen onBack={() => setLoggedScreen('Settings')} />;
+    if (loggedScreen === 'AdminVerification')
       return (
-        <PersonalInfoScreen onBack={() => setLoggedScreen('Settings')} />
+        <AdminVerificationScreen onBack={() => setLoggedScreen('Settings')} />
       );
     return (
       <HomeScreen

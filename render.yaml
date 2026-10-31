@@ -50,6 +50,12 @@ services:
         value: 15m
       - key: JWT_REFRESH_EXPIRATION
         value: 30d
+      - key: EMAIL_VERIFICATION_SECRET
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
       - key: ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS
         value: ucb.edu.br
       - key: MATCHING_TIME_TOLERANCE_MINUTES

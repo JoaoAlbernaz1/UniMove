@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -20,20 +21,24 @@ import {
   KeyRound,
   LockKeyhole,
   ShieldCheck,
+  X,
 } from 'lucide-react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/Button';
 import { Message } from '../components/Message';
+import { TextField } from '../components/TextField';
+import { IdentityVerificationWizard } from '../components/IdentityVerificationWizard';
 import {
   getPersonalInfo,
   getProfilePhoto,
+  changePassword,
   updatePersonalInfo,
   type PersonalInfo,
 } from '../services/personalInfoService';
 import { colors, fonts, maxContentWidth } from '../theme';
 
 export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
-  const { authApi, authFetch } = useAuth();
+  const { authApi, authFetch, signOut } = useAuth();
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null);
   const [name, setName] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
@@ -44,6 +49,13 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [verificationVisible, setVerificationVisible] = useState(false);
 
   const loadPersonalInfo = useCallback(async () => {
     setError(null);
@@ -113,11 +125,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
     if (normalizedStudentNumber !== personalInfo.studentNumber)
       changes.studentNumber = normalizedStudentNumber;
     try {
-      const updated = await updatePersonalInfo(
-        authApi,
-        changes,
-        selectedPhoto,
-      );
+      const updated = await updatePersonalInfo(authApi, changes, selectedPhoto);
       setPersonalInfo(updated);
       setName(updated.fullName);
       setStudentNumber(updated.studentNumber ?? '');
@@ -132,6 +140,68 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  function openPasswordModal() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setPasswordConfirmation('');
+    setPasswordError(null);
+    setPasswordModalVisible(true);
+  }
+
+  function closePasswordModal() {
+    if (changingPassword) return;
+    setPasswordModalVisible(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setPasswordConfirmation('');
+    setPasswordError(null);
+  }
+
+  async function submitPasswordChange() {
+    if (changingPassword) return;
+    if (!currentPassword || !newPassword || !passwordConfirmation) {
+      setPasswordError('Preencha todos os campos.');
+      return;
+    }
+    if (newPassword !== passwordConfirmation) {
+      setPasswordError('A confirmação precisa ser idêntica à nova senha.');
+      return;
+    }
+
+    setChangingPassword(true);
+    setPasswordError(null);
+    try {
+      await changePassword(authApi, { currentPassword, newPassword });
+    } catch (reason) {
+      setPasswordError(
+        reason instanceof Error
+          ? reason.message
+          : 'Não foi possível alterar sua senha. Tente novamente.',
+      );
+      setChangingPassword(false);
+      return;
+    }
+
+    setPasswordModalVisible(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setPasswordConfirmation('');
+    setChangingPassword(false);
+    try {
+      await signOut();
+    } catch {
+      Alert.alert(
+        'Senha alterada',
+        'Não foi possível encerrar sua sessão automaticamente. Saia da conta e entre novamente com sua nova senha.',
+      );
+      return;
+    }
+    Alert.alert(
+      'Senha alterada',
+      'Por segurança, sua sessão foi encerrada. Entre novamente usando sua nova senha.',
+    );
   }
 
   const fullName = name.trim() || 'Usuário';
@@ -263,7 +333,9 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
           <View style={[styles.fieldRow, styles.lastFieldRow]}>
             <Text style={styles.fieldLabel}>CPF</Text>
             <View style={styles.lockedValueRow}>
-              <Text style={styles.lockedValue}>{maskCpf(personalInfo?.cpf ?? '')}</Text>
+              <Text style={styles.lockedValue}>
+                {maskCpf(personalInfo?.cpf ?? '')}
+              </Text>
               <LockKeyhole size={15} color="#94A3B8" />
             </View>
           </View>
@@ -271,7 +343,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
 
         <View style={styles.actionsCard}>
           <Pressable
-            onPress={() => showComingSoon('Validação Cadastral')}
+            onPress={() => setVerificationVisible(true)}
             style={({ pressed }) => [
               styles.actionRow,
               styles.dividedAction,
@@ -286,7 +358,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
             <ChevronRight size={19} color={colors.muted} />
           </Pressable>
           <Pressable
-            onPress={() => showComingSoon('Alterar Senha')}
+            onPress={openPasswordModal}
             style={({ pressed }) => [
               styles.actionRow,
               pressed && styles.pressed,
@@ -321,6 +393,106 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
           )}
         </Pressable>
       </View>
+
+      <Modal
+        visible={passwordModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closePasswordModal}
+      >
+        <SafeAreaView style={styles.passwordModal}>
+          <View style={styles.passwordModalHeader}>
+            <View style={styles.passwordModalTitleRow}>
+              <Text
+                style={styles.passwordModalTitle}
+                accessibilityRole="header"
+              >
+                Alterar senha
+              </Text>
+              <Pressable
+                onPress={closePasswordModal}
+                disabled={changingPassword}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
+              >
+                <X size={24} color={colors.primary} />
+              </Pressable>
+            </View>
+            <Text style={styles.passwordModalDescription}>
+              Confirme sua senha atual e escolha uma nova senha.
+            </Text>
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.passwordModalContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <TextField
+              label="Senha atual"
+              icon={KeyRound}
+              password
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              autoComplete="current-password"
+              textContentType="password"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!changingPassword}
+              returnKeyType="next"
+            />
+            <TextField
+              label="Nova senha"
+              icon={KeyRound}
+              password
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="Mínimo de 8 caracteres"
+              hint="Use maiúscula, minúscula, número e caractere especial."
+              autoComplete="new-password"
+              textContentType="newPassword"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!changingPassword}
+              returnKeyType="next"
+            />
+            <TextField
+              label="Confirmar nova senha"
+              icon={KeyRound}
+              password
+              value={passwordConfirmation}
+              onChangeText={setPasswordConfirmation}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!changingPassword}
+              returnKeyType="done"
+              onSubmitEditing={() => void submitPasswordChange()}
+            />
+            {passwordError ? (
+              <Message tone="error">{passwordError}</Message>
+            ) : null}
+          </ScrollView>
+          <View style={styles.passwordModalFooter}>
+            <Button
+              title="Atualizar senha"
+              onPress={() => void submitPasswordChange()}
+              loading={changingPassword}
+            />
+            <Button
+              title="Cancelar"
+              variant="outline"
+              onPress={closePasswordModal}
+              disabled={changingPassword}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+      <IdentityVerificationWizard
+        visible={verificationVisible}
+        email={personalInfo?.institutionalEmail ?? ''}
+        onClose={() => setVerificationVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -341,10 +513,6 @@ function Header({ onBack }: { onBack: () => void }) {
   );
 }
 
-function showComingSoon(moduleName: string) {
-  Alert.alert(moduleName, 'Este módulo será desenvolvido em uma próxima etapa.');
-}
-
 function maskCpf(cpf: string) {
   const digits = cpf.replace(/\D/g, '');
   if (digits.length !== 11) return '***.***.***-**';
@@ -353,6 +521,48 @@ function maskCpf(cpf: string) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  passwordModal: { flex: 1, backgroundColor: colors.background },
+  passwordModalHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  passwordModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  passwordModalTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 32,
+    color: colors.primary,
+  },
+  passwordModalDescription: {
+    marginTop: 8,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+  },
+  passwordModalContent: {
+    width: '100%',
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
+    gap: 18,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  passwordModalFooter: {
+    width: '100%',
+    maxWidth: maxContentWidth,
+    alignSelf: 'center',
+    gap: 10,
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.white,
+  },
   header: {
     minHeight: 56,
     flexDirection: 'row',

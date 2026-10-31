@@ -80,6 +80,41 @@ API responde 403 com código `PROFILE_INCOMPLETE` nas demais funcionalidades.
 Autenticação e gestão da própria conta permanecem acessíveis. Após concluir,
 o mesmo token já pode acessar as funcionalidades; não é necessário novo login.
 
+## Validação cadastral em duas etapas
+
+1. `POST /api/v1/users/me/verification/email/code` envia um código de seis
+   dígitos distintos para o e-mail institucional cadastrado. O código expira em
+   10 minutos, pode ser reenviado após 60 segundos, permite até cinco tentativas
+   e é armazenado como HMAC, nunca em texto puro. `POST
+   /api/v1/users/me/verification/email/confirm` confirma o código.
+2. `POST /api/v1/users/me/verification/academic-document` recebe
+   `multipart/form-data` com o campo `document`. Aceita PDF digital de até 5 MB
+   e cinco páginas, extrai texto localmente e compara nome, matrícula, curso,
+   modelo da declaração e código GUID do relatório com o perfil. PDFs escaneados
+   sem texto extraível não são aceitos. O arquivo não é persistido.
+
+Uma correspondência de texto não comprova autenticidade. A solicitação permanece
+`PENDING_REVIEW` até que um administrador do UniMove confira o GUID no validador
+público TOTVS indicado no comprovante e aprove ou rejeite a solicitação. A fila
+está em `GET /api/v1/admin/academic-verifications`; a revisão usa
+`PATCH /api/v1/admin/academic-verifications/:userId` com `status` igual a
+`APPROVED` ou `REJECTED` e, para rejeição, `reviewNote`. Essas rotas exigem a
+role `ADMIN`. A tela de revisão aparece em Configurações para contas com essa
+role. Essa é uma permissão do próprio UniMove, sem dependência de acesso
+administrativo ao portal UCB/TOTVS. Para concedê-la a uma conta existente, um
+operador autorizado configura `SEED_ADMIN_EMAIL` com o e-mail dessa conta e
+executa `npm run prisma:seed` uma vez em ambiente seguro conectado ao banco; a
+role é adicionada sem trocar a senha da conta. Remova a variável após a operação.
+Alterar nome, matrícula ou curso invalida uma validação anterior.
+
+Para habilitar o envio, configure no backend `EMAIL_VERIFICATION_SECRET` com ao
+menos 32 caracteres, `RESEND_API_KEY` e `RESEND_FROM`. O remetente precisa usar
+um domínio próprio verificado no Resend; `*.vercel.app` não pode ser usado como
+domínio remetente. O plano gratuito consultado inclui até 3.000 mensagens por
+mês e 100 por dia: https://resend.com/pricing. Configure as variáveis no serviço
+que hospeda a API, nunca no app ou no repositório. A migração
+`202610300001_identity_verification` cria os dados de verificação.
+
 ## Cadastro de veículos e habilitação de motorista
 
 `POST /api/v1/vehicles` recebe `multipart/form-data`, com o campo `data` contendo

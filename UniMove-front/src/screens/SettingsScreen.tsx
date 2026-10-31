@@ -17,6 +17,7 @@ import {
   CircleHelp,
   LogOut,
   Shield,
+  ShieldCheck,
   UserRound,
 } from 'lucide-react-native';
 import type { Me } from '../api/auth';
@@ -40,16 +41,20 @@ const settingsSections = [
   },
   {
     title: 'SUPORTE',
-    items: [{ title: 'Central de Ajuda', icon: CircleHelp, color: colors.primary }],
+    items: [
+      { title: 'Central de Ajuda', icon: CircleHelp, color: colors.primary },
+    ],
   },
 ];
 
 export function SettingsScreen({
   onBack,
   onNavigatePersonalInfo,
+  onNavigateAdminVerification,
 }: {
   onBack: () => void;
   onNavigatePersonalInfo: () => void;
+  onNavigateAdminVerification: () => void;
 }) {
   const { authApi, signOut } = useAuth();
   const [user, setUser] = useState<Me | null>(null);
@@ -97,9 +102,7 @@ export function SettingsScreen({
           void signOut().catch((reason: unknown) => {
             Alert.alert(
               'Não foi possível sair',
-              reason instanceof Error
-                ? reason.message
-                : 'Tente novamente.',
+              reason instanceof Error ? reason.message : 'Tente novamente.',
             );
           });
         },
@@ -216,6 +219,25 @@ export function SettingsScreen({
             </View>
           </View>
         ))}
+        {user?.roles?.some(({ role }) => role.name === 'ADMIN') ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>ADMINISTRAÇÃO</Text>
+            <View style={styles.sectionCard}>
+              <Pressable
+                onPress={onNavigateAdminVerification}
+                style={({ pressed }) => [
+                  styles.menuRow,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+              >
+                <ShieldCheck size={18} color={colors.primary} />
+                <Text style={styles.menuLabel}>Revisões cadastrais</Text>
+                <ChevronRight size={19} color={colors.muted} />
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.versionCard}>
           <Text style={styles.versionName}>UniMove</Text>
