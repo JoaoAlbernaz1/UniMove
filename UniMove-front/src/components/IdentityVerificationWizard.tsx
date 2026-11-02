@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { CheckCircle2, FileText, X } from 'lucide-react-native';
+import { CheckCircle2, Clock3, FileText, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,12 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from './Button';
 import { Message } from './Message';
-import { TextField } from './TextField';
 import {
   getIdentityVerificationStatus,
-  sendIdentityVerificationCode,
   submitAcademicDocument,
-  verifyInstitutionalEmail,
   type IdentityVerificationStatus,
 } from '../services/identityVerificationService';
 import { colors, fonts, maxContentWidth } from '../theme';
@@ -28,27 +25,17 @@ const DOCUMENT_MAX_BYTES = 5 * 1024 * 1024;
 
 export function IdentityVerificationWizard({
   visible,
-  email,
   onClose,
 }: {
   visible: boolean;
-  email: string;
   onClose: () => void;
 }) {
   const { authApi } = useAuth();
   const [status, setStatus] = useState<IdentityVerificationStatus | null>(null);
-  const [step, setStep] = useState<1 | 2>(1);
-  const [code, setCode] = useState('');
   const [document, setDocument] =
     useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [verifyingCode, setVerifyingCode] = useState(false);
   const [submittingDocument, setSubmittingDocument] = useState(false);
-  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(
-    null,
-  );
-  const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -57,13 +44,6 @@ export function IdentityVerificationWizard({
     try {
       const current = await getIdentityVerificationStatus(authApi);
       setStatus(current);
-      setStep(current.emailVerified ? 2 : 1);
-      setCurrentTime(Date.now());
-      setResendAvailableAt(
-        current.resendAvailableAt
-          ? new Date(current.resendAvailableAt).getTime()
-          : null,
-      );
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -80,56 +60,6 @@ export function IdentityVerificationWizard({
     const timer = setTimeout(() => void loadStatus(), 0);
     return () => clearTimeout(timer);
   }, [loadStatus, visible]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const resendSeconds = resendAvailableAt
-    ? Math.max(0, Math.ceil((resendAvailableAt - currentTime) / 1000))
-    : 0;
-
-  async function sendCode() {
-    setSendingCode(true);
-    setError(null);
-    try {
-      const result = await sendIdentityVerificationCode(authApi);
-      setCurrentTime(Date.now());
-      setResendAvailableAt(new Date(result.resendAvailableAt).getTime());
-      setCode('');
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : 'Não foi possível enviar o código. Tente novamente.',
-      );
-    } finally {
-      setSendingCode(false);
-    }
-  }
-
-  async function confirmCode() {
-    if (code.length !== 6) {
-      setError('Digite os 6 dígitos recebidos por e-mail.');
-      return;
-    }
-    setVerifyingCode(true);
-    setError(null);
-    try {
-      await verifyInstitutionalEmail(authApi, code);
-      setCode('');
-      await loadStatus();
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : 'Não foi possível validar o código. Tente novamente.',
-      );
-    } finally {
-      setVerifyingCode(false);
-    }
-  }
 
   async function chooseDocument() {
     try {
@@ -182,7 +112,7 @@ export function IdentityVerificationWizard({
   }
 
   const academicStatus = status?.academic?.status;
-  const isBusy = loading || sendingCode || verifyingCode || submittingDocument;
+  const isBusy = loading || submittingDocument;
 
   return (
     <Modal
@@ -207,7 +137,9 @@ export function IdentityVerificationWizard({
               <X size={24} color={colors.primary} />
             </Pressable>
           </View>
-          <Text style={styles.subtitle}>Etapa {step} de 2</Text>
+          <Text style={styles.subtitle}>
+            Envie seu comprovante de matrícula
+          </Text>
         </View>
 
         {loading && !status ? (
@@ -221,132 +153,90 @@ export function IdentityVerificationWizard({
             keyboardShouldPersistTaps="handled"
           >
             {error ? <Message tone="error">{error}</Message> : null}
-            {step === 1 ? (
-              <>
-                <View style={styles.stepCard}>
-                  <Text style={styles.stepTitle}>
-                    1. Confirme seu e-mail institucional
-                  </Text>
+            <View style={styles.stepCard}>
+              <Text style={styles.stepTitle}>
+                {academicStatus === 'APPROVED'
+                  ? 'Validação concluída'
+                  : academicStatus === 'PENDING_REVIEW'
+                    ? 'Documento recebido'
+                    : academicStatus === 'REJECTED'
+                      ? 'Ajuste necessário'
+                      : 'Comprove seu vínculo acadêmico'}
+              </Text>
+              <Text style={styles.bodyText}>
+                Envie o PDF original da declaração. O sistema confere os dados
+                do documento e a equipe UniMove revisa a autenticidade. O
+                arquivo não será guardado.
+              </Text>
+            </View>
+            {academicStatus === 'APPROVED' ? (
+              <View style={styles.statusCard}>
+                <CheckCircle2 size={22} color={colors.accentDark} />
+                <View style={styles.statusText}>
+                  <Text style={styles.stepTitle}>Cadastro validado</Text>
                   <Text style={styles.bodyText}>
-                    Enviaremos um código de 6 dígitos para {email}. O código
-                    expira em 10 minutos.
+                    O comprovante foi conferido no portal oficial por um
+                    administrador.
                   </Text>
                 </View>
-                {status?.emailVerified ? (
-                  <>
-                    <Message tone="success">
-                      E-mail institucional verificado.
-                    </Message>
-                    <Button
-                      title="Continuar para o comprovante"
-                      onPress={() => setStep(2)}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      title={
-                        resendSeconds
-                          ? `Aguarde ${resendSeconds}s para reenviar`
-                          : 'Enviar código por e-mail'
-                      }
-                      onPress={() => void sendCode()}
-                      loading={sendingCode}
-                      disabled={resendSeconds > 0}
-                    />
-                    <TextField
-                      label="Código de verificação"
-                      value={code}
-                      onChangeText={(value) => {
-                        setCode(value.replace(/\D/g, '').slice(0, 6));
-                        setError(null);
-                      }}
-                      keyboardType="number-pad"
-                      maxLength={6}
-                      placeholder="000000"
-                      autoComplete="one-time-code"
-                      editable={!isBusy}
-                    />
-                    <Button
-                      title="Confirmar e continuar"
-                      onPress={() => void confirmCode()}
-                      loading={verifyingCode}
-                      disabled={code.length !== 6}
-                    />
-                  </>
-                )}
-              </>
+              </View>
+            ) : academicStatus === 'PENDING_REVIEW' ? (
+              <View style={styles.statusCard}>
+                <Clock3 size={22} color={colors.accentDark} />
+                <View style={styles.statusText}>
+                  <Text style={styles.stepTitle}>Em análise</Text>
+                  <Text style={styles.bodyText}>
+                    Seus dados foram conferidos e o comprovante aguarda revisão
+                    da equipe. Você não precisa enviar novamente.
+                    {status?.academic?.submittedAt
+                      ? ` Enviado em ${new Date(
+                          status.academic.submittedAt,
+                        ).toLocaleDateString('pt-BR')}.`
+                      : ''}
+                  </Text>
+                </View>
+              </View>
             ) : (
               <>
-                <View style={styles.stepCard}>
-                  <Text style={styles.stepTitle}>
-                    2. Comprove seu vínculo acadêmico
-                  </Text>
-                  <Text style={styles.bodyText}>
-                    Envie o PDF original da declaração. Vamos conferir nome,
-                    matrícula, curso e código do relatório. O arquivo não será
-                    guardado.
-                  </Text>
-                </View>
-                {academicStatus === 'APPROVED' ? (
-                  <View style={styles.statusCard}>
-                    <CheckCircle2 size={22} color={colors.accentDark} />
-                    <View style={styles.statusText}>
-                      <Text style={styles.stepTitle}>Cadastro validado</Text>
-                      <Text style={styles.bodyText}>
-                        O comprovante foi conferido no portal oficial por um
-                        administrador.
-                      </Text>
-                    </View>
-                  </View>
-                ) : academicStatus === 'PENDING_REVIEW' ? (
-                  <Message tone="success">
-                    Dados conferidos. A autenticidade está pendente de revisão
-                    por um administrador do UniMove.
-                  </Message>
-                ) : (
+                {academicStatus === 'REJECTED' ? (
                   <>
-                    {academicStatus === 'REJECTED' &&
-                    status?.academic?.reviewNote ? (
+                    {status?.academic?.reviewNote ? (
                       <Message tone="error">
-                        Revisão anterior: {status.academic.reviewNote}
+                        Motivo informado pela equipe: {status.academic.reviewNote}
                       </Message>
                     ) : null}
-                    <Pressable
-                      onPress={() => void chooseDocument()}
-                      disabled={isBusy}
-                      style={({ pressed }) => [
-                        styles.documentPicker,
-                        pressed && styles.pressed,
-                      ]}
-                      accessibilityRole="button"
-                    >
-                      <FileText size={22} color={colors.primary} />
-                      <Text style={styles.documentName}>
-                        {document?.name ?? 'Escolher comprovante em PDF'}
+                    <View style={styles.stepCard}>
+                      <Text style={styles.bodyText}>
+                        Confira o motivo da rejeição, escolha um novo
+                        comprovante em PDF e envie novamente para análise.
                       </Text>
-                    </Pressable>
-                    <Button
-                      title="Enviar para validação"
-                      onPress={() => void sendDocument()}
-                      loading={submittingDocument}
-                      disabled={!document}
-                    />
+                    </View>
                   </>
-                )}
+                ) : null}
+                <Pressable
+                  onPress={() => void chooseDocument()}
+                  disabled={isBusy}
+                  style={({ pressed }) => [
+                    styles.documentPicker,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                >
+                  <FileText size={22} color={colors.primary} />
+                  <Text style={styles.documentName}>
+                    {document?.name ?? 'Escolher comprovante em PDF'}
+                  </Text>
+                </Pressable>
+                <Button
+                  title="Enviar para validação"
+                  onPress={() => void sendDocument()}
+                  loading={submittingDocument}
+                  disabled={!document}
+                />
               </>
             )}
           </ScrollView>
         )}
-        {step === 2 && status?.emailVerified ? (
-          <View style={styles.footer}>
-            <Button
-              title="Voltar para o e-mail"
-              variant="outline"
-              onPress={() => setStep(1)}
-            />
-          </View>
-        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -427,14 +317,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentBg,
   },
   statusText: { flex: 1, gap: 4 },
-  footer: {
-    width: '100%',
-    maxWidth: maxContentWidth,
-    alignSelf: 'center',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.white,
-  },
   pressed: { opacity: 0.8 },
 });

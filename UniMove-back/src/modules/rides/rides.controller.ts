@@ -14,6 +14,7 @@ import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
+import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { PrismaService } from '../../database/prisma.service';
 import {
@@ -45,8 +46,8 @@ export class RidesController {
     private readonly config: ConfigService,
     private readonly notifications: NotificationService,
   ) {}
-
   @Post(':rideId/requests')
+  @RequireAcademicVerification()
   async request(
     @CurrentUser() user: AuthUser,
     @Param('rideId') rideId: string,

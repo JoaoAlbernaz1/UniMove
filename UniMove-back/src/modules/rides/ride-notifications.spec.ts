@@ -2,6 +2,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import type { PrismaService } from '../../database/prisma.service';
 import {
+  AcademicVerificationStatus,
   NotificationType,
   ReservationStatus,
   RideRequestStatus,
@@ -55,6 +56,41 @@ describe('Ride event notifications', () => {
     );
   });
 
+  it('does not let the driver accept a request from an unverified passenger', async () => {
+    const request = {
+      id: 'request-id',
+      rideId: 'ride-id',
+      passengerId: passenger.id,
+      seatsRequested: 1,
+      status: RideRequestStatus.PENDING,
+      expiresAt: new Date(Date.now() + 60_000),
+      ride: { id: 'ride-id', driverId: driver.id, status: RideStatus.OPEN, availableSeats: 1 },
+      passenger: {
+        roles: [],
+        academicVerification: { status: AcademicVerificationStatus.PENDING_REVIEW },
+      },
+    };
+    const tx = {
+      rideRequest: {
+        findUnique: jest.fn().mockResolvedValue(request),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(request),
+      },
+      ride: { update: jest.fn() },
+      $queryRaw: jest.fn(),
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        Promise.resolve(callback(tx)),
+      ),
+    } as unknown as PrismaService;
+    const controller = new RideRequestsController(prisma, notifications);
+
+    await expect(controller.accept(driver, 'request-id')).rejects.toThrow(
+      'O passageiro precisa concluir a validação cadastral antes da confirmação da vaga.',
+    );
+    expect(tx.ride.update).not.toHaveBeenCalled();
+  });
+
   it('notifies the passenger when the driver accepts a request', async () => {
     const request = {
       id: 'request-id',
@@ -64,6 +100,10 @@ describe('Ride event notifications', () => {
       status: RideRequestStatus.PENDING,
       expiresAt: new Date(Date.now() + 60_000),
       ride: { id: 'ride-id', driverId: driver.id, status: RideStatus.OPEN, availableSeats: 1 },
+      passenger: {
+        roles: [],
+        academicVerification: { status: AcademicVerificationStatus.APPROVED },
+      },
     };
     const tx = {
       rideRequest: {

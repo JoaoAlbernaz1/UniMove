@@ -3,8 +3,9 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsDateString, IsInt, IsUUID, Matches, Max, Min } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
+import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { Weekday } from '../../generated/prisma/enums';
+import { RoleName, Weekday } from '../../generated/prisma/enums';
 
 class SearchDto {
   @IsUUID() originLocationId!: string;
@@ -29,14 +30,22 @@ export class MatchingController {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
-  @Get('search') async search(@Query() dto: SearchDto) {
+  @Get('search')
+  @RequireAcademicVerification()
+  async search(@Query() dto: SearchDto) {
     const desiredMinutes = this.minutes(dto.departureTime);
     const tolerance = this.config.get<number>('matching.toleranceMinutes')!;
     const weekday = weekdays[new Date(`${dto.date}T12:00:00Z`).getUTCDay()];
     const routes = await this.prisma.routeTemplate.findMany({
       where: {
         active: true,
-        driver: { driverLicense: { isNot: null } },
+        driver: {
+          driverLicense: { isNot: null },
+          OR: [
+            { academicVerification: { is: { status: 'APPROVED' } } },
+            { roles: { some: { role: { name: RoleName.ADMIN } } } },
+          ],
+        },
         originLocationId: dto.originLocationId,
         destinationLocationId: dto.destinationLocationId,
         availableSeats: { gte: dto.seats },

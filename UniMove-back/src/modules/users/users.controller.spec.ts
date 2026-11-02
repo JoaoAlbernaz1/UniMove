@@ -26,6 +26,7 @@ describe('UsersController.changePassword', () => {
     prisma as unknown as PrismaService,
     {} as unknown as AchievementsService,
     {} as unknown as ProfilePhotoService,
+    {} as never,
   );
 
   beforeEach(async () => {

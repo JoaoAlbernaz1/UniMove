@@ -1,6 +1,7 @@
 import {
   Alert,
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,12 +20,18 @@ import {
   MessageCircle,
   Settings,
   Users,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Me } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { Message } from '../components/Message';
+import { Button } from '../components/Button';
+import {
+  getIdentityVerificationStatus,
+  type IdentityVerificationStatus,
+} from '../services/identityVerificationService';
 import { colors, fonts, maxContentWidth, radius } from '../theme';
 
 type HomeProfile = Me & {
@@ -60,6 +67,7 @@ export function HomeScreen({
   onNavigateHistory,
   onNavigateProfile,
   onNavigateSettings,
+  onNavigatePersonalInfo,
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
@@ -67,14 +75,30 @@ export function HomeScreen({
   onNavigateHistory?: () => void;
   onNavigateProfile?: (userId: string) => void;
   onNavigateSettings?: () => void;
+  onNavigatePersonalInfo?: (openVerification: boolean) => void;
 }) {
-  const { authApi, justRegistered } = useAuth();
+  const { authApi, justRegistered, consumeRegistrationNotice } = useAuth();
+  const [showRegistrationNotice, setShowRegistrationNotice] =
+    useState(justRegistered);
   const [me, setMe] = useState<HomeProfile | null>(null);
   const [upcomingRides, setUpcomingRides] = useState<Ride[]>([]);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [ridesError, setRidesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [verificationPromptVisible, setVerificationPromptVisible] = useState(false);
+  const [verificationCheckError, setVerificationCheckError] = useState<string | null>(null);
+  const [checkingRideAccess, setCheckingRideAccess] = useState(false);
+  const [academicVerificationStatus, setAcademicVerificationStatus] =
+    useState<IdentityVerificationStatus['academic']>(null);
+  const [pendingRideFeature, setPendingRideFeature] = useState<'search' | 'offer'>('search');
+
+  useEffect(() => {
+    if (!showRegistrationNotice) return;
+    consumeRegistrationNotice();
+    const timeout = setTimeout(() => setShowRegistrationNotice(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [consumeRegistrationNotice, showRegistrationNotice]);
 
   const loadHome = useCallback(
     () =>
@@ -117,6 +141,43 @@ export function HomeScreen({
     description = 'Esta funcionalidade será disponibilizada em uma próxima etapa.',
   ) {
     Alert.alert(feature, description);
+  }
+
+  async function enterRideFeature(destination: 'search' | 'offer') {
+    if (checkingRideAccess) return;
+    setPendingRideFeature(destination);
+    setCheckingRideAccess(true);
+    setVerificationCheckError(null);
+    try {
+      const currentUser = me ?? (await authApi<HomeProfile>('/users/me'));
+      if (!me) setMe(currentUser);
+      if (currentUser.roles?.some(({ role }) => role.name === 'ADMIN')) {
+        setVerificationPromptVisible(false);
+        if (destination === 'search') onNavigateSearch?.();
+        else onNavigateOffer?.();
+        return;
+      }
+
+      const current: IdentityVerificationStatus =
+        await getIdentityVerificationStatus(authApi);
+      if (current.academic?.status === 'APPROVED') {
+        setVerificationPromptVisible(false);
+        if (destination === 'search') onNavigateSearch?.();
+        else onNavigateOffer?.();
+        return;
+      }
+      setAcademicVerificationStatus(current.academic);
+      setVerificationPromptVisible(true);
+    } catch (reason) {
+      setVerificationCheckError(
+        reason instanceof Error
+          ? reason.message
+          : 'Não foi possível consultar o status da validação.',
+      );
+      setVerificationPromptVisible(true);
+    } finally {
+      setCheckingRideAccess(false);
+    }
   }
 
   const firstName = me?.fullName.trim().split(/\s+/)[0];
@@ -179,7 +240,7 @@ export function HomeScreen({
           </View>
 
           <View style={styles.content}>
-            {justRegistered ? (
+            {showRegistrationNotice ? (
               <View style={styles.registrationNotice}>
                 <Message tone="success">
                   Cadastro realizado com sucesso!
@@ -213,7 +274,8 @@ export function HomeScreen({
 
             <View style={styles.actions}>
               <Pressable
-                onPress={onNavigateSearch}
+                onPress={() => void enterRideFeature('search')}
+                disabled={checkingRideAccess}
                 style={({ pressed }) => [
                   styles.actionCard,
                   styles.searchCard,
@@ -237,7 +299,8 @@ export function HomeScreen({
               </Pressable>
 
               <Pressable
-                onPress={onNavigateOffer}
+                onPress={() => void enterRideFeature('offer')}
+                disabled={checkingRideAccess}
                 style={({ pressed }) => [
                   styles.actionCard,
                   styles.offerCard,
@@ -416,6 +479,90 @@ export function HomeScreen({
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={verificationPromptVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerificationPromptVisible(false)}
+      >
+        <View style={styles.verificationOverlay}>
+          <View style={styles.verificationDialog}>
+            {verificationCheckError ? (
+              <>
+                <Text style={styles.verificationTitle}>
+                  Não foi possível verificar seu cadastro
+                </Text>
+                <Message tone="error">{verificationCheckError}</Message>
+                <Button
+                  title="Tentar novamente"
+                  onPress={() => {
+                    setVerificationPromptVisible(false);
+                    void enterRideFeature(pendingRideFeature);
+                  }}
+                />
+              </>
+            ) : academicVerificationStatus?.status === 'PENDING_REVIEW' ? (
+              <>
+                <View style={styles.verificationIcon}>
+                  <Clock3 size={24} color={colors.accentDark} />
+                </View>
+                <Text style={styles.verificationTitle}>
+                  Validação em análise
+                </Text>
+                <Text style={styles.verificationMessage}>
+                  Seu comprovante já foi enviado e está em análise pela equipe
+                  UniMove. Aguarde a conclusão da revisão; não é necessário
+                  enviar o documento novamente.
+                </Text>
+                <Button
+                  title="Acompanhar andamento"
+                  onPress={() => {
+                    setVerificationPromptVisible(false);
+                    onNavigatePersonalInfo?.(true);
+                  }}
+                />
+                <Button
+                  title="Cancelar"
+                  variant="outline"
+                  onPress={() => setVerificationPromptVisible(false)}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.verificationIcon}>
+                  <ShieldCheck size={24} color={colors.accentDark} />
+                </View>
+                <Text style={styles.verificationTitle}>
+                  {academicVerificationStatus?.status === 'REJECTED'
+                    ? 'Ajuste sua validação cadastral'
+                    : 'Valide seu vínculo acadêmico'}
+                </Text>
+                <Text style={styles.verificationMessage}>
+                  {academicVerificationStatus?.status === 'REJECTED'
+                    ? 'Sua validação foi rejeitada. Consulte o motivo e envie um novo comprovante em Informações Pessoais para voltar a usar os serviços de carona.'
+                    : 'Para buscar ou oferecer caronas, envie seu comprovante de matrícula e aguarde a revisão da equipe UniMove. Você pode acompanhar o andamento em Informações Pessoais.'}
+                </Text>
+                <Button
+                  title={
+                    academicVerificationStatus?.status === 'REJECTED'
+                      ? 'Corrigir validação'
+                      : 'Ir para validação'
+                  }
+                  onPress={() => {
+                    setVerificationPromptVisible(false);
+                    onNavigatePersonalInfo?.(true);
+                  }}
+                />
+                <Button
+                  title="Agora não"
+                  variant="outline"
+                  onPress={() => setVerificationPromptVisible(false)}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -762,5 +909,40 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     marginTop: 5,
+  },
+  verificationOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+  },
+  verificationDialog: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    gap: 14,
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+  },
+  verificationIcon: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+    backgroundColor: '#EFF6FF',
+  },
+  verificationTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 20,
+    lineHeight: 27,
+    color: colors.primary,
+  },
+  verificationMessage: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.muted,
   },
 });

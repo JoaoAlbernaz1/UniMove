@@ -98,7 +98,6 @@ model User {
   profileCompletedAt            DateTime?                   @map("profile_completed_at") @db.Timestamptz(3)
   cpf                           String                      @unique
   institutionalEmail            String                      @unique @map("institutional_email")
-  institutionalEmailVerifiedAt  DateTime?                   @map("institutional_email_verified_at") @db.Timestamptz(3)
   passwordHash                  String                      @map("password_hash")
   termsAcceptedAt               DateTime?                   @map("terms_accepted_at") @db.Timestamptz(3)
   termsVersion                  String?                     @map("terms_version")
@@ -111,7 +110,6 @@ model User {
   vehicles                      Vehicle[]
   driverLicense                 DriverLicense?
   profilePhoto                  ProfilePhoto?
-  emailVerificationChallenge    EmailVerificationChallenge?
   academicVerification          AcademicVerification?
   academicVerificationsReviewed AcademicVerification[]      @relation("AcademicVerificationReviewer")
   routeTemplates                RouteTemplate[]
@@ -190,18 +188,6 @@ model ProfilePhoto {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("profile_photos")
-}
-
-model EmailVerificationChallenge {
-  userId            String   @id @map("user_id") @db.Uuid
-  codeHash          String   @map("code_hash") @db.Char(64)
-  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
-  resendAvailableAt DateTime @map("resend_available_at") @db.Timestamptz(3)
-  attempts          Int      @default(0)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("email_verification_challenges")
 }
 
 model AcademicVerification {
