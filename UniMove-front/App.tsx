@@ -29,6 +29,8 @@ import { RegisterVehicleScreen } from './src/screens/RegisterVehicleScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PersonalInfoScreen } from './src/screens/PersonalInfoScreen';
 import { AdminVerificationScreen } from './src/screens/AdminVerificationScreen';
+import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
+import { PrivacyScreen } from './src/screens/PrivacyScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
 import { AdvertisementBar } from './src/components/AdvertisementBar';
@@ -162,6 +164,8 @@ function SignedInApp() {
     | 'Settings'
     | 'PersonalInfo'
     | 'AdminVerification'
+    | 'Notifications'
+    | 'Privacy'
   >('Home');
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
@@ -274,8 +278,18 @@ function SignedInApp() {
           onNavigateAdminVerification={() =>
             setLoggedScreen('AdminVerification')
           }
+          onNavigateNotifications={() => setLoggedScreen('Notifications')}
+          onNavigatePrivacy={() => setLoggedScreen('Privacy')}
         />
       );
+    if (loggedScreen === 'Notifications')
+      return (
+        <NotificationSettingsScreen
+          onBack={() => setLoggedScreen('Settings')}
+        />
+      );
+    if (loggedScreen === 'Privacy')
+      return <PrivacyScreen onBack={() => setLoggedScreen('Settings')} />;
     if (loggedScreen === 'PersonalInfo')
       return (
         <PersonalInfoScreen
@@ -308,6 +322,7 @@ function SignedInApp() {
           setOpenVerificationOnPersonalInfo(openVerification);
           setLoggedScreen('PersonalInfo');
         }}
+        onNavigateNotifications={() => setLoggedScreen('Notifications')}
       />
     );
   }

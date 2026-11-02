@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { Equals, IsEmail, IsString, IsStrongPassword, Length, MinLength } from 'class-validator';
+import { Equals, IsEmail, IsOptional, IsString, IsStrongPassword, Length, MinLength } from 'class-validator';
 import { MatchesProperty } from '../../../common/validators/matches-property';
 import {
   PASSWORD_ERROR,
@@ -40,6 +40,7 @@ export class RegisterDto {
 export class LoginDto {
   @IsEmail() email!: string;
   @IsString() password!: string;
+  @IsOptional() @IsString() twoFactorCode?: string;
 }
 export class RefreshDto {
   @IsString() refreshToken!: string;

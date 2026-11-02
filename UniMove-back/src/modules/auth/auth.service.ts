@@ -2,7 +2,8 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { randomUUID } from 'node:crypto';
+import { createDecipheriv, createHash, randomUUID } from 'node:crypto';
+import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -12,6 +13,21 @@ import {
   PRIVACY_POLICY_VERSION,
 } from './registration-policy';
 import { TERMS_OF_USE, PRIVACY_POLICY } from './registration-documents';
+
+function decryptTwoFactorSecret(value: string) {
+  const [ivValue, tagValue, encryptedValue] = value.split('.');
+  if (!ivValue || !tagValue || !encryptedValue) throw new UnauthorizedException('Segredo 2FA inválido.');
+  const seed = process.env.TWO_FACTOR_ENCRYPTION_KEY
+    || process.env.AUTH_REFRESH_SECRET
+    || 'unimove-development-two-factor-key';
+  const key = createHash('sha256').update(seed).digest();
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivValue, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedValue, 'base64url')),
+    decipher.final(),
+  ]).toString('utf8');
+}
 
 @Injectable()
 export class AuthService {
@@ -79,13 +95,21 @@ export class AuthService {
   async login(dto: LoginDto, userAgent?: string) {
     const user = await this.prisma.user.findUnique({
       where: { institutionalEmail: dto.email.toLowerCase() },
-      include: { roles: { include: { role: true } } },
+      include: { roles: { include: { role: true } }, twoFactor: true },
     });
     if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
     if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Conta indisponível para login.');
+    }
+    if (user.twoFactor?.enabled) {
+      if (!dto.twoFactorCode)
+        return { twoFactorRequired: true as const };
+      const secret = decryptTwoFactorSecret(user.twoFactor.secret);
+      const result = await verify({ token: dto.twoFactorCode, secret });
+      if (!result.valid)
+        throw new UnauthorizedException('Código de autenticação inválido.');
     }
     const tokens = await this.issueTokens(
       user.id,

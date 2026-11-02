@@ -25,6 +25,8 @@ export function LoginScreen({ onRegister }: Props) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,7 +36,12 @@ export function LoginScreen({ onRegister }: Props) {
     setError(null);
     setLoading(true);
     try {
-      await signIn(email, password);
+      const signedIn = await signIn(email, password, needsTwoFactor ? twoFactorCode : undefined);
+      if (!signedIn) {
+        setNeedsTwoFactor(true);
+        setNotice('Digite o código de 6 dígitos do seu aplicativo autenticador.');
+      }
+      setLoading(false);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : 'Algo deu errado. Tente novamente.',
@@ -104,6 +111,20 @@ export function LoginScreen({ onRegister }: Props) {
                 onSubmitEditing={handleSubmit}
                 editable={!loading}
               />
+              {needsTwoFactor ? (
+                <TextField
+                  label="Código de autenticação"
+                  icon={Lock}
+                  value={twoFactorCode}
+                  onChangeText={(value) => setTwoFactorCode(value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  returnKeyType="go"
+                  onSubmitEditing={handleSubmit}
+                  editable={!loading}
+                />
+              ) : null}
               <Pressable
                 style={styles.forgot}
                 onPress={comingSoon}

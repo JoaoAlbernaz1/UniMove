@@ -18,6 +18,7 @@ export type Tokens = {
   refreshToken: string;
   expiresIn: number;
 };
+export type LoginResult = Tokens | { twoFactorRequired: true };
 
 export type Me = {
   id: string;
@@ -26,10 +27,10 @@ export type Me = {
   roles?: { role: { name: string } }[];
 };
 
-export function login(email: string, password: string) {
-  return api<Tokens>('/auth/login', {
+export function login(email: string, password: string, twoFactorCode?: string) {
+  return api<LoginResult>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password, twoFactorCode }),
   });
 }
 

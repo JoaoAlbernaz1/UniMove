@@ -51,10 +51,14 @@ export function SettingsScreen({
   onBack,
   onNavigatePersonalInfo,
   onNavigateAdminVerification,
+  onNavigateNotifications,
+  onNavigatePrivacy,
 }: {
   onBack: () => void;
   onNavigatePersonalInfo: () => void;
   onNavigateAdminVerification: () => void;
+  onNavigateNotifications: () => void;
+  onNavigatePrivacy: () => void;
 }) {
   const { authApi, signOut } = useAuth();
   const [user, setUser] = useState<Me | null>(null);
@@ -201,7 +205,11 @@ export function SettingsScreen({
                     onPress={() =>
                       item.title === 'Informações Pessoais'
                         ? onNavigatePersonalInfo()
-                        : showComingSoon(item.title)
+                        : item.title === 'Notificações'
+                          ? onNavigateNotifications()
+                          : item.title === 'Privacidade'
+                            ? onNavigatePrivacy()
+                            : showComingSoon(item.title)
                     }
                     style={({ pressed }) => [
                       styles.menuRow,

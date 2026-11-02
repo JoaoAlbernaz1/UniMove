@@ -68,6 +68,7 @@ export function HomeScreen({
   onNavigateProfile,
   onNavigateSettings,
   onNavigatePersonalInfo,
+  onNavigateNotifications,
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
@@ -76,6 +77,7 @@ export function HomeScreen({
   onNavigateProfile?: (userId: string) => void;
   onNavigateSettings?: () => void;
   onNavigatePersonalInfo?: (openVerification: boolean) => void;
+  onNavigateNotifications?: () => void;
 }) {
   const { authApi, justRegistered, consumeRegistrationNotice } = useAuth();
   const [showRegistrationNotice, setShowRegistrationNotice] =
@@ -216,7 +218,7 @@ export function HomeScreen({
               </View>
               <View style={styles.headerActions}>
                 <Pressable
-                  onPress={() => showComingSoon('Notificações')}
+                  onPress={() => onNavigateNotifications?.()}
                   style={styles.headerIconButton}
                   accessibilityRole="button"
                   accessibilityLabel="Notificações"

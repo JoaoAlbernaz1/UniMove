@@ -19,7 +19,7 @@ type AuthContextValue = {
   // true logo depois do cadastro, para a Home mostrar a confirmação do UC01.
   justRegistered: boolean;
   consumeRegistrationNotice: () => void;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string, twoFactorCode?: string) => Promise<boolean>;
   signUp: (input: authApi.RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
   getFreshAccessToken: () => Promise<string>;
@@ -84,8 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [renew]);
 
   const signIn = useCallback(
-    async (email: string, password: string) => {
-      await storeTokens(await authApi.login(email, password));
+    async (email: string, password: string, twoFactorCode?: string) => {
+      const result = await authApi.login(email, password, twoFactorCode);
+      if ('twoFactorRequired' in result) return false;
+      await storeTokens(result);
+      return true;
     },
     [storeTokens],
   );
@@ -94,15 +97,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(
     async (input: authApi.RegisterInput) => {
       await authApi.register(input);
-      let tokens: authApi.Tokens;
       try {
-        tokens = await authApi.login(input.institutionalEmail, input.password);
+        const result = await authApi.login(input.institutionalEmail, input.password);
+        if ('twoFactorRequired' in result) throw new AccountCreatedError();
+        setJustRegistered(true);
+        await storeTokens(result);
       } catch {
         // A conta já existe; tentar cadastrar de novo daria "já cadastrado".
         throw new AccountCreatedError();
       }
-      setJustRegistered(true);
-      await storeTokens(tokens);
     },
     [storeTokens],
   );

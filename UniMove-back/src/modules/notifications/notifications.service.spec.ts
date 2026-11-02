@@ -29,8 +29,8 @@ describe('NotificationService', () => {
     create.mockResolvedValue({ id: 'notification-id', ...input, readAt: null });
     const notification = await service.create(input);
     expect(create).toHaveBeenCalledWith({ data: input });
-    expect(notification.userId).toBe(input.userId);
-    expect(notification.readAt).toBeNull();
+    expect(notification?.userId).toBe(input.userId);
+    expect(notification?.readAt).toBeNull();
   });
 
   it('marks only an owned notification as read', async () => {

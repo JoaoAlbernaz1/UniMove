@@ -66,6 +66,11 @@ enum NotificationType {
   SYSTEM
 }
 
+enum ProfileVisibility {
+  UNIVERSITY
+  CONFIRMED
+}
+
 enum IncidentType {
   INAPPROPRIATE_BEHAVIOR
   NO_SHOW
@@ -98,6 +103,7 @@ model User {
   profileCompletedAt            DateTime?                   @map("profile_completed_at") @db.Timestamptz(3)
   cpf                           String                      @unique
   institutionalEmail            String                      @unique @map("institutional_email")
+  phone                         String?                     @map("phone")
   passwordHash                  String                      @map("password_hash")
   termsAcceptedAt               DateTime?                   @map("terms_accepted_at") @db.Timestamptz(3)
   termsVersion                  String?                     @map("terms_version")
@@ -126,6 +132,13 @@ model User {
   cancellations                 Cancellation[]
   auditLogs                     AuditLog[]
   refreshSessions               RefreshSession[]
+  notificationPreferences       NotificationPreference?
+  privacyPreferences            PrivacyPreference?
+  pushDevices                   PushDevice[]
+  blockedUsers                  UserBlock[] @relation("BlockedUsers")
+  blockedByUsers                UserBlock[] @relation("BlockedByUsers")
+  dataExportRequests            DataExportRequest[]
+  twoFactor                     TwoFactorAuth?
 
   @@map("users")
 }
@@ -424,6 +437,104 @@ model Notification {
 
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+model NotificationPreference {
+  userId          String   @id @map("user_id") @db.Uuid
+  enabled         Boolean  @default(true)
+  rideRequests    Boolean  @default(true) @map("ride_requests")
+  confirmations   Boolean  @default(true)
+  reminderMinutes Int      @default(30) @map("reminder_minutes")
+  chatMessages    Boolean  @default(true) @map("chat_messages")
+  payments        Boolean  @default(true)
+  safety          Boolean  @default(true)
+  promotions      Boolean  @default(false)
+  push            Boolean  @default(true)
+  email           Boolean  @default(true)
+  sms             Boolean  @default(false)
+  doNotDisturb    Boolean  @default(true) @map("do_not_disturb")
+  quietStart      String   @default("22:00") @map("quiet_start") @db.VarChar(5)
+  quietEnd        String   @default("07:00") @map("quiet_end") @db.VarChar(5)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model PrivacyPreference {
+  userId              String           @id @map("user_id") @db.Uuid
+  profileVisibility   ProfileVisibility @default(UNIVERSITY) @map("profile_visibility")
+  courseSemester      Boolean          @default(true) @map("course_semester")
+  ratings             Boolean          @default(true)
+  phoneSharing        Boolean          @default(false) @map("phone_sharing")
+  realTimeLocation    Boolean          @default(true) @map("real_time_location")
+  frequentLocations   Boolean          @default(true) @map("frequent_locations")
+  consentUpdatedAt    DateTime         @default(now()) @map("consent_updated_at") @db.Timestamptz(3)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("privacy_preferences")
+}
+
+model UserBlock {
+  blockerId String   @map("blocker_id") @db.Uuid
+  blockedId String   @map("blocked_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  blocker   User     @relation("BlockedUsers", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlockedByUsers", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("user_blocks")
+}
+
+model PushDevice {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique
+  platform  String   @db.VarChar(20)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@map("push_devices")
+}
+
+model TwoFactorAuth {
+  userId      String   @id @map("user_id") @db.Uuid
+  secret      String
+  enabled     Boolean  @default(false)
+  recoveryCodes String[] @default([]) @map("recovery_codes")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor_auth")
+}
+
+enum DataExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model DataExportRequest {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  status      DataExportStatus @default(PENDING)
+  format      String           @default("JSON") @db.VarChar(10)
+  error       String?
+  requestedAt DateTime         @default(now()) @map("requested_at") @db.Timestamptz(3)
+  completedAt DateTime?        @map("completed_at") @db.Timestamptz(3)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, requestedAt])
+  @@map("data_export_requests")
 }
 
 model Incident {
