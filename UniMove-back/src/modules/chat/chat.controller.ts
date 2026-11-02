@@ -1,18 +1,9 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsUUID } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { ChatService } from './chat.service';
-
-class SendMessageDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @MinLength(1)
-  @MaxLength(2000)
-  content!: string;
-}
 
 class StartConversationDto {
   @IsOptional()
@@ -49,15 +40,6 @@ export class ChatController {
     @Query() query: MessageQueryDto,
   ) {
     return this.chat.listMessages(user.id, id, query.after);
-  }
-
-  @Post('conversations/:id/messages')
-  sendMessage(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SendMessageDto,
-  ) {
-    return this.chat.sendMessage(user.id, id, dto.content);
   }
 }
 

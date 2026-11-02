@@ -117,8 +117,11 @@ todas as páginas, e apresenta a média real de avaliações ou "Sem avaliaçõe
 
 Em **Mensagens**, o motorista e o passageiro podem iniciar uma conversa depois que a reserva
 for confirmada. O histórico continua disponível após a conclusão da viagem; novas mensagens
-só podem ser enviadas enquanto a reserva estiver confirmada. A tela consulta mensagens pela
-API REST a cada quatro segundos.
+só podem ser enviadas enquanto a reserva estiver confirmada. As mensagens novas são enviadas
+e recebidas em tempo real por Socket.IO sobre WebSocket. A API REST continua sendo usada para
+carregar o histórico e recuperar mensagens após uma desconexão.
+Consulte [a documentação detalhada do módulo](../docs/chat-conversas-tempo-real.md) para
+entender o fluxo completo e os eventos usados.
 
 ### Celular sem acesso à máquina (EAS Update)
 

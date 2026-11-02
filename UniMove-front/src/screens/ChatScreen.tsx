@@ -10,6 +10,10 @@ import {
 } from "react-native";
 import { ArrowLeft, Send } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  createChatSocket,
+  type ChatSocketAcknowledgement,
+} from "../api/chatSocket";
 import type { Conversation, ChatMessage } from "../api/messages";
 import { useAuth } from "../auth/AuthContext";
 import { colors, fonts, maxContentWidth } from "../theme";
@@ -21,6 +25,17 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
+function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()]
+    .sort((a, b) => {
+      const byTime = a.createdAt.localeCompare(b.createdAt);
+      return byTime || a.id.localeCompare(b.id);
+    })
+    .slice(-100);
+}
+
 export function ChatScreen({
   conversation,
   userId,
@@ -30,29 +45,63 @@ export function ChatScreen({
   userId: string;
   onBack: () => void;
 }) {
-  const { authApi } = useAuth();
+  const { authApi, getFreshAccessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connecting" | "connected" | "reconnecting"
+  >("connecting");
   const listRef = useRef<FlatList<ChatMessage>>(null);
-  const loadingRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const socketRef = useRef<ReturnType<typeof createChatSocket> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const hasLoadedHistoryRef = useRef(false);
+  const syncingMessagesRef = useRef(false);
+  const syncRequestedRef = useRef(false);
   const other =
     conversation.passengerId === userId
       ? conversation.ride.driver
       : conversation.passenger;
   const canSend = conversation.canSend;
 
-  const loadMessages = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+  const addMessages = useCallback((incoming: ChatMessage[]) => {
+    const merged = mergeMessages(messagesRef.current, incoming);
+    messagesRef.current = merged;
+    lastMessageIdRef.current = merged.at(-1)?.id ?? null;
+    setMessages(merged);
+  }, []);
+
+  const syncMessages = useCallback(async () => {
+    if (syncingMessagesRef.current) {
+      syncRequestedRef.current = true;
+      return;
+    }
+
+    syncingMessagesRef.current = true;
     try {
-      const next = await authApi<ChatMessage[]>(
-        `/messages/conversations/${conversation.id}/messages`,
-      );
-      setMessages(next);
-      setError(null);
+      do {
+        syncRequestedRef.current = false;
+        const isInitialLoad = !hasLoadedHistoryRef.current;
+        let cursor = isInitialLoad ? null : lastMessageIdRef.current;
+        const recovered: ChatMessage[] = [];
+        let page: ChatMessage[];
+        do {
+          const query = cursor ? `?after=${encodeURIComponent(cursor)}` : "";
+          page = await authApi<ChatMessage[]>(
+            `/messages/conversations/${conversation.id}/messages${query}`,
+          );
+          recovered.push(...page);
+          if (page.length) cursor = page[page.length - 1].id;
+        } while (!isInitialLoad && page.length === 100);
+
+        addMessages(recovered);
+        hasLoadedHistoryRef.current = true;
+        setError(null);
+      } while (syncRequestedRef.current);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -60,34 +109,120 @@ export function ChatScreen({
           : "Não foi possível carregar as mensagens.",
       );
     } finally {
-      loadingRef.current = false;
+      syncingMessagesRef.current = false;
       setLoading(false);
     }
-  }, [authApi, conversation.id]);
+  }, [addMessages, authApi, conversation.id]);
 
   useEffect(() => {
-    void loadMessages();
-    const interval = setInterval(() => void loadMessages(), 4000);
-    return () => clearInterval(interval);
-  }, [loadMessages]);
+    let active = true;
+    const socket = createChatSocket(getFreshAccessToken, (cause) => {
+      if (!active) return;
+      setConnectionStatus("reconnecting");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível autenticar a conexão da conversa.",
+      );
+    });
+    socketRef.current = socket;
+    const scheduleReconnect = () => {
+      if (!active || reconnectTimerRef.current) return;
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (active) socket.connect();
+      }, 5000);
+    };
+
+    const onMessage = (message: ChatMessage) => {
+      if (!active || message.conversationId !== conversation.id) return;
+      addMessages([message]);
+      setError(null);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    };
+
+    socket.on("conversation:message", onMessage);
+    socket.on("connect", () => {
+      socket.emit(
+        "conversation:join",
+        { conversationId: conversation.id },
+        (ack: ChatSocketAcknowledgement) => {
+          if (!active) return;
+          if (!ack.ok) {
+            setConnectionStatus("reconnecting");
+            setError(ack.error);
+            return;
+          }
+          setConnectionStatus("connected");
+          void syncMessages();
+        },
+      );
+    });
+    socket.on("disconnect", (reason) => {
+      if (!active) return;
+      setConnectionStatus("reconnecting");
+      if (reason === "io server disconnect") scheduleReconnect();
+    });
+    socket.on("connect_error", (cause: Error) => {
+      if (!active) return;
+      setConnectionStatus("reconnecting");
+      setError(cause.message || "Não foi possível conectar à conversa.");
+      if (!socket.active) scheduleReconnect();
+    });
+
+    const historySyncTimer = setTimeout(() => {
+      if (active) void syncMessages();
+    }, 0);
+    socket.connect();
+    return () => {
+      active = false;
+      clearTimeout(historySyncTimer);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      socketRef.current = null;
+      socket.removeAllListeners();
+      socket.disconnect();
+    };
+  }, [addMessages, conversation.id, getFreshAccessToken, syncMessages]);
 
   async function send() {
     const content = text.trim();
     if (!content || sending || !canSend) return;
+    const socket = socketRef.current;
+    if (!socket?.connected || connectionStatus !== "connected") {
+      setError("Reconectando à conversa. Tente enviar sua mensagem novamente.");
+      return;
+    }
+
     setSending(true);
     try {
-      const sent = await authApi<ChatMessage>(
-        `/messages/conversations/${conversation.id}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ content }),
-        },
-      );
-      setMessages((current) =>
-        current.some((item) => item.id === sent.id)
-          ? current
-          : [...current, sent].slice(-100),
-      );
+      await new Promise<void>((resolve, reject) => {
+        socket
+          .timeout(10000)
+          .emit(
+            "conversation:send",
+            { conversationId: conversation.id, content },
+            (
+              timeoutError: Error | null,
+              acknowledgement: ChatSocketAcknowledgement<ChatMessage>,
+            ) => {
+              if (timeoutError) {
+                reject(
+                  new Error(
+                    "A mensagem demorou para ser confirmada. Tente novamente.",
+                  ),
+                );
+                return;
+              }
+              if (!acknowledgement.ok) {
+                reject(new Error(acknowledgement.error));
+                return;
+              }
+              if (acknowledgement.data) addMessages([acknowledgement.data]);
+              resolve();
+            },
+          );
+      });
       setText("");
       setError(null);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
@@ -121,6 +256,13 @@ export function ChatScreen({
             <Text numberOfLines={1} style={styles.route}>
               {conversation.ride.originLocation.name} →{" "}
               {conversation.ride.destinationLocation.name}
+            </Text>
+            <Text style={styles.connectionStatus}>
+              {connectionStatus === "connected"
+                ? "Mensagens em tempo real"
+                : connectionStatus === "connecting"
+                  ? "Conectando..."
+                  : "Reconectando..."}
             </Text>
           </View>
         </View>
@@ -177,10 +319,13 @@ export function ChatScreen({
             />
             <Pressable
               onPress={() => void send()}
-              disabled={!text.trim() || sending}
+              disabled={
+                !text.trim() || sending || connectionStatus !== "connected"
+              }
               style={({ pressed }) => [
                 styles.sendButton,
-                (!text.trim() || sending) && styles.disabled,
+                (!text.trim() || sending || connectionStatus !== "connected") &&
+                  styles.disabled,
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
@@ -229,6 +374,11 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, gap: 3 },
   name: { color: colors.white, fontFamily: fonts.bold, fontSize: 15 },
   route: { color: "#CBD5E1", fontFamily: fonts.regular, fontSize: 11 },
+  connectionStatus: {
+    color: "#A7F3D0",
+    fontFamily: fonts.medium,
+    fontSize: 10,
+  },
   messages: { flexGrow: 1, padding: 16, gap: 10, justifyContent: "flex-end" },
   bubble: {
     maxWidth: "82%",

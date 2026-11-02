@@ -33,9 +33,11 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.0",
     "@nestjs/platform-express": "11.2.6",
+    "@nestjs/platform-socket.io": "^11.2.6",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.0.0",
+    "@nestjs/websockets": "^11.2.6",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "argon2": "latest",
@@ -50,7 +52,8 @@
     "pg": "latest",
     "reflect-metadata": "latest",
     "rxjs": "latest",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "latest",
