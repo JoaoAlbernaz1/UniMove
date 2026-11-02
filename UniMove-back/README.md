@@ -179,21 +179,40 @@ futura está em `docs/proposta-verificacao-cnh.md` na raiz do repositório.
 As conversas usam as tabelas `message_conversations` e `chat_messages` já existentes. Uma
 conversa é vinculada a uma carona e a um passageiro com reserva confirmada; o motorista e
 esse passageiro podem consultar o histórico. Reservas concluídas mantêm o histórico acessível,
-mas somente reservas confirmadas aceitam novas mensagens. A API autenticada oferece:
+mas somente reservas confirmadas aceitam novas mensagens. A API REST autenticada oferece:
 
 - `GET /api/v1/messages/conversations` — conversas do usuário.
 - `GET /api/v1/messages/available-participants` — participantes elegíveis das caronas.
 - `POST /api/v1/rides/:rideId/conversations` — inicia ou recupera conversa; motorista informa `{ "passengerId": "..." }`.
 - `GET /api/v1/messages/conversations/:id/messages` — até as 100 mensagens mais recentes.
-- `POST /api/v1/messages/conversations/:id/messages` — envia `{ "content": "..." }` (até 2.000 caracteres).
 
-O envio também cria uma notificação `MESSAGE_RECEIVED` para o outro participante. O app
-atualiza a conversa por polling REST a cada quatro segundos.
+O envio e a entrega em tempo real usam **Socket.IO exclusivamente para conversas**, no
+namespace `/chat`, com transporte WebSocket. A conexão envia o JWT de acesso em
+`handshake.auth.token`. Cada cliente deve entrar na conversa antes de enviar mensagens:
+
+- `conversation:join` com `{ "conversationId": "..." }`; confirmação `{ "ok": true }`.
+- `conversation:send` com `{ "conversationId": "...", "content": "..." }`; conteúdo de até
+  2.000 caracteres. O servidor persiste a mensagem antes de confirmar e transmiti-la.
+- `conversation:message` entrega a mensagem salva a todos os participantes conectados na sala.
+
+Confirmações de evento retornam `{ "ok": true, "data": ... }` ou
+`{ "ok": false, "error": "..." }`. A autorização de entrada e envio verifica a participação
+na conversa e a reserva no backend. O cliente reconecta automaticamente e usa o histórico
+REST com cursor `after` para recuperar mensagens perdidas durante uma desconexão. Cada
+mensagem continua persistida no PostgreSQL e também gera uma notificação `MESSAGE_RECEIVED`.
+O gateway limita cada usuário a 100 eventos de conversa por minuto.
+
+O token WebSocket expira junto com o JWT de acesso; na reconexão, o app renova a sessão antes
+de autenticar novamente. A entrega em tempo real funciona com uma instância do backend; para
+executar várias instâncias, é necessário configurar um adapter Socket.IO compartilhado para
+propagar os eventos entre elas. Não há servidor ou serviço externo de mensageria configurado.
+Consulte [a documentação detalhada do módulo](../docs/chat-conversas-tempo-real.md) para o
+fluxo completo, eventos, autorização, reconexão e limitações.
 
 O backend usa UTC e as rotas recorrentes registram seu timezone. `.env` nunca deve ser versionado.
 
 ## Notificações da V1
 
-As notificações são persistidas exclusivamente no PostgreSQL e consultadas pelo Flutter através da API REST. A V1 não usa SMTP, Firebase, push notifications ou WebSocket. E-mail e push estão planejados para a V2.
+As notificações são persistidas exclusivamente no PostgreSQL e consultadas pelo app através da API REST. O WebSocket é reservado à entrega das mensagens de conversa; notificações gerais não usam push ou WebSocket. E-mail e push estão planejados para a V2.
 
-O app consulta a API REST para atualizar as mensagens; notificações push e WebSocket não fazem parte da V1.
+As mensagens usam Socket.IO para entrega em tempo real; notificações gerais permanecem na API REST.

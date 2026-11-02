@@ -30,6 +30,13 @@ export class JwtAuthGuard implements CanActivate {
       ])
     )
       return true;
+    if (context.getType() === 'ws') {
+      const client = context.switchToWs().getClient<{ data?: { userId?: string } }>();
+      if (typeof client.data?.userId !== 'string')
+        throw new UnauthorizedException('Token de acesso ausente.');
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<Request & { user: AuthUser }>();
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     if (type !== 'Bearer' || !token) throw new UnauthorizedException('Token de acesso ausente.');

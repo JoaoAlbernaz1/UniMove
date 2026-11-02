@@ -7,12 +7,12 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from 'react';
-import * as authApi from '../api/auth';
-import { api, apiResponse, ApiError } from '../api/client';
-import { tokenStorage } from './tokenStorage';
+} from "react";
+import * as authApi from "../api/auth";
+import { api, apiResponse, ApiError } from "../api/client";
+import { tokenStorage } from "./tokenStorage";
 
-type Status = 'loading' | 'signedOut' | 'signedIn';
+type Status = "loading" | "signedOut" | "signedIn";
 
 type AuthContextValue = {
   status: Status;
@@ -22,6 +22,7 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: authApi.RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
+  getFreshAccessToken: () => Promise<string>;
   refreshSession: () => Promise<void>;
   // Chamada autenticada: renova o access token (15 min) sozinha quando expira.
   authApi: <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -32,12 +33,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export class AccountCreatedError extends Error {
   constructor() {
-    super('Sua conta foi criada, mas não conseguimos entrar agora. Volte ao login e entre com seu e-mail e senha.');
+    super(
+      "Sua conta foi criada, mas não conseguimos entrar agora. Volte ao login e entre com seu e-mail e senha.",
+    );
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<Status>('loading');
+  const [status, setStatus] = useState<Status>("loading");
   const [justRegistered, setJustRegistered] = useState(false);
   const tokensRef = useRef<authApi.Tokens | null>(null);
   // O backend gira o refresh token a cada uso e revoga o anterior. Duas renovações
@@ -48,12 +51,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokensRef.current = tokens;
     if (tokens) await tokenStorage.set(tokens.refreshToken);
     else await tokenStorage.clear();
-    setStatus(tokens ? 'signedIn' : 'signedOut');
+    setStatus(tokens ? "signedIn" : "signedOut");
   }, []);
 
   const renew = useCallback(() => {
     refreshingRef.current ??= (async () => {
-      const refreshToken = tokensRef.current?.refreshToken ?? (await tokenStorage.get());
+      const refreshToken =
+        tokensRef.current?.refreshToken ?? (await tokenStorage.get());
       if (!refreshToken) {
         await storeTokens(null);
         return null;
@@ -76,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // UC11: ao abrir o app, retoma a sessão salva em vez de pedir login de novo.
   useEffect(() => {
-    renew().catch(() => setStatus('signedOut'));
+    renew().catch(() => setStatus("signedOut"));
   }, [renew]);
 
   const signIn = useCallback(
@@ -114,6 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setJustRegistered(false);
   }, []);
 
+  const getFreshAccessToken = useCallback(async () => {
+    const tokens = await renew();
+    if (!tokens)
+      throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
+    return tokens.accessToken;
+  }, [renew]);
+
   const authenticatedApi = useCallback(
     async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
       const token = tokensRef.current?.accessToken;
@@ -122,7 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 401) throw e;
         const tokens = await renew();
-        if (!tokens) throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
+        if (!tokens)
+          throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
         return api<T>(path, { ...init, token: tokens.accessToken });
       }
     },
@@ -138,15 +150,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.status !== 401) return response;
       const tokens = await renew();
       if (!tokens)
-        throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
-      response = await apiResponse(path, { ...init, token: tokens.accessToken });
+        throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
+      response = await apiResponse(path, {
+        ...init,
+        token: tokens.accessToken,
+      });
       return response;
     },
     [renew],
   );
 
   const refreshSession = useCallback(async () => {
-    if (!(await renew())) throw new ApiError('Sua sessão expirou. Entre novamente.', 401);
+    if (!(await renew()))
+      throw new ApiError("Sua sessão expirou. Entre novamente.", 401);
   }, [renew]);
 
   const value = useMemo(
@@ -157,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signOut,
+      getFreshAccessToken,
       refreshSession,
       authApi: authenticatedApi,
       authFetch: authenticatedFetch,
@@ -168,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signOut,
+      getFreshAccessToken,
       refreshSession,
       authenticatedApi,
       authenticatedFetch,
@@ -179,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth precisa estar dentro de <AuthProvider>.');
+  if (!context)
+    throw new Error("useAuth precisa estar dentro de <AuthProvider>.");
   return context;
 }

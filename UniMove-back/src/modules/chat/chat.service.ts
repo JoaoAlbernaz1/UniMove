@@ -220,6 +220,10 @@ export class ChatService {
     return messages.reverse();
   }
 
+  async authorizeConversationAccess(userId: string, conversationId: string) {
+    await this.getAuthorizedConversation(userId, conversationId);
+  }
+
   async sendMessage(userId: string, conversationId: string, content: string) {
     const conversation = await this.getAuthorizedConversation(userId, conversationId);
     if (conversation.reservationStatus !== ReservationStatus.CONFIRMED) {

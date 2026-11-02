@@ -14,6 +14,7 @@ describe('JwtAuthGuard', () => {
   const findUnique = jest.fn();
   const request = { headers: { authorization: 'Bearer access-token' } };
   const context = {
+    getType: () => 'http',
     getHandler: () => () => {},
     getClass: () => class {},
     switchToHttp: () => ({ getRequest: () => request }),
