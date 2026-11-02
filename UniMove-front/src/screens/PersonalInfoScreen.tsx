@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import * as ImagePicker from 'expo-image-picker';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import * as ImagePicker from "expo-image-picker";
 import {
   ActivityIndicator,
   Alert,
@@ -12,8 +12,8 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
   Camera,
@@ -21,27 +21,37 @@ import {
   KeyRound,
   LockKeyhole,
   ShieldCheck,
+  Trash2,
   X,
-} from 'lucide-react-native';
-import { useAuth } from '../auth/AuthContext';
-import { Button } from '../components/Button';
-import { Message } from '../components/Message';
-import { TextField } from '../components/TextField';
-import { IdentityVerificationWizard } from '../components/IdentityVerificationWizard';
+} from "lucide-react-native";
+import { useAuth } from "../auth/AuthContext";
+import { Button } from "../components/Button";
+import { Message } from "../components/Message";
+import { TextField } from "../components/TextField";
+import { IdentityVerificationWizard } from "../components/IdentityVerificationWizard";
 import {
   getPersonalInfo,
   getProfilePhoto,
   changePassword,
+  deleteAccount,
   updatePersonalInfo,
   type PersonalInfo,
-} from '../services/personalInfoService';
-import { colors, fonts, maxContentWidth } from '../theme';
+} from "../services/personalInfoService";
+import { colors, fonts, maxContentWidth } from "../theme";
 
-export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
+export function PersonalInfoScreen({
+  onBack,
+  openVerificationOnMount = false,
+  onVerificationPromptConsumed,
+}: {
+  onBack: () => void;
+  openVerificationOnMount?: boolean;
+  onVerificationPromptConsumed?: () => void;
+}) {
   const { authApi, authFetch, signOut } = useAuth();
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo | null>(null);
-  const [name, setName] = useState('');
-  const [studentNumber, setStudentNumber] = useState('');
+  const [name, setName] = useState("");
+  const [studentNumber, setStudentNumber] = useState("");
   const [savedPhotoUri, setSavedPhotoUri] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] =
     useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -50,12 +60,23 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [verificationVisible, setVerificationVisible] = useState(false);
+  const [verificationVisible, setVerificationVisible] = useState(
+    openVerificationOnMount,
+  );
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openVerificationOnMount) return;
+    onVerificationPromptConsumed?.();
+  }, [onVerificationPromptConsumed, openVerificationOnMount]);
 
   const loadPersonalInfo = useCallback(async () => {
     setError(null);
@@ -66,14 +87,14 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
       ]);
       setPersonalInfo(info);
       setName(info.fullName);
-      setStudentNumber(info.studentNumber ?? '');
+      setStudentNumber(info.studentNumber ?? "");
       setSavedPhotoUri(photo);
       setSelectedPhoto(null);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'Não foi possível carregar suas informações pessoais.',
+          : "Não foi possível carregar suas informações pessoais.",
       );
     } finally {
       setLoading(false);
@@ -101,7 +122,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   async function choosePhoto() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ["images"],
         allowsMultipleSelection: false,
         quality: 0.9,
         preferredAssetRepresentationMode:
@@ -110,8 +131,8 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
       if (!result.canceled) setSelectedPhoto(result.assets[0]);
     } catch {
       Alert.alert(
-        'Não foi possível abrir as fotos',
-        'Tente novamente ou escolha outra imagem.',
+        "Não foi possível abrir as fotos",
+        "Tente novamente ou escolha outra imagem.",
       );
     }
   }
@@ -128,14 +149,14 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
       const updated = await updatePersonalInfo(authApi, changes, selectedPhoto);
       setPersonalInfo(updated);
       setName(updated.fullName);
-      setStudentNumber(updated.studentNumber ?? '');
+      setStudentNumber(updated.studentNumber ?? "");
       if (selectedPhoto) setSavedPhotoUri(selectedPhoto.uri);
       setSelectedPhoto(null);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'Não foi possível atualizar suas informações.',
+          : "Não foi possível atualizar suas informações.",
       );
     } finally {
       setSaving(false);
@@ -143,9 +164,9 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   }
 
   function openPasswordModal() {
-    setCurrentPassword('');
-    setNewPassword('');
-    setPasswordConfirmation('');
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
     setPasswordError(null);
     setPasswordModalVisible(true);
   }
@@ -153,20 +174,20 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   function closePasswordModal() {
     if (changingPassword) return;
     setPasswordModalVisible(false);
-    setCurrentPassword('');
-    setNewPassword('');
-    setPasswordConfirmation('');
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
     setPasswordError(null);
   }
 
   async function submitPasswordChange() {
     if (changingPassword) return;
     if (!currentPassword || !newPassword || !passwordConfirmation) {
-      setPasswordError('Preencha todos os campos.');
+      setPasswordError("Preencha todos os campos.");
       return;
     }
     if (newPassword !== passwordConfirmation) {
-      setPasswordError('A confirmação precisa ser idêntica à nova senha.');
+      setPasswordError("A confirmação precisa ser idêntica à nova senha.");
       return;
     }
 
@@ -178,44 +199,95 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
       setPasswordError(
         reason instanceof Error
           ? reason.message
-          : 'Não foi possível alterar sua senha. Tente novamente.',
+          : "Não foi possível alterar sua senha. Tente novamente.",
       );
       setChangingPassword(false);
       return;
     }
 
     setPasswordModalVisible(false);
-    setCurrentPassword('');
-    setNewPassword('');
-    setPasswordConfirmation('');
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
     setChangingPassword(false);
     try {
       await signOut();
     } catch {
       Alert.alert(
-        'Senha alterada',
-        'Não foi possível encerrar sua sessão automaticamente. Saia da conta e entre novamente com sua nova senha.',
+        "Senha alterada",
+        "Não foi possível encerrar sua sessão automaticamente. Saia da conta e entre novamente com sua nova senha.",
       );
       return;
     }
     Alert.alert(
-      'Senha alterada',
-      'Por segurança, sua sessão foi encerrada. Entre novamente usando sua nova senha.',
+      "Senha alterada",
+      "Por segurança, sua sessão foi encerrada. Entre novamente usando sua nova senha.",
     );
   }
 
-  const fullName = name.trim() || 'Usuário';
+  function openDeleteAccountModal() {
+    setDeletePassword("");
+    setDeleteError(null);
+    setDeleteModalVisible(true);
+  }
+
+  function closeDeleteAccountModal() {
+    if (deletingAccount) return;
+    setDeleteModalVisible(false);
+    setDeletePassword("");
+    setDeleteError(null);
+  }
+
+  async function submitAccountDeletion() {
+    if (deletingAccount) return;
+    if (!deletePassword) {
+      setDeleteError("Informe sua senha atual para confirmar.");
+      return;
+    }
+
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(authApi, deletePassword);
+    } catch (reason) {
+      setDeleteError(
+        reason instanceof Error
+          ? reason.message
+          : "Não foi possível apagar sua conta. Tente novamente.",
+      );
+      setDeletingAccount(false);
+      return;
+    }
+
+    setDeleteModalVisible(false);
+    setDeletePassword("");
+    try {
+      await signOut();
+    } catch {
+      Alert.alert(
+        "Conta apagada",
+        "Sua conta foi apagada. Feche o aplicativo e entre novamente para concluir a saída.",
+      );
+      return;
+    }
+    Alert.alert(
+      "Conta apagada",
+      "Seus dados de identificação direta foram removidos.",
+    );
+  }
+
+  const fullName = name.trim() || "Usuário";
   const initials = fullName
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part[0])
-    .join('')
+    .join("")
     .toUpperCase();
   const photoUri = selectedPhoto?.uri ?? savedPhotoUri;
 
   if (loading && !personalInfo) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <Header onBack={onBack} />
         <View style={styles.loading}>
           <ActivityIndicator color={colors.accent} />
@@ -227,7 +299,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
 
   if (error && !personalInfo) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <Header onBack={onBack} />
         <View style={styles.errorState}>
           <Message tone="error">{error}</Message>
@@ -245,7 +317,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <Header onBack={onBack} />
       <ScrollView
         style={styles.body}
@@ -334,7 +406,7 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
             <Text style={styles.fieldLabel}>CPF</Text>
             <View style={styles.lockedValueRow}>
               <Text style={styles.lockedValue}>
-                {maskCpf(personalInfo?.cpf ?? '')}
+                {maskCpf(personalInfo?.cpf ?? "")}
               </Text>
               <LockKeyhole size={15} color="#94A3B8" />
             </View>
@@ -342,8 +414,25 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
         </View>
 
         <View style={styles.actionsCard}>
+          {!personalInfo?.roles.some(({ role }) => role.name === "ADMIN") ? (
+            <Pressable
+              onPress={() => setVerificationVisible(true)}
+              style={({ pressed }) => [
+                styles.actionRow,
+                styles.dividedAction,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+            >
+              <View style={styles.actionIcon}>
+                <ShieldCheck size={18} color={colors.accentDark} />
+              </View>
+              <Text style={styles.actionLabel}>Validação Cadastral</Text>
+              <ChevronRight size={19} color={colors.muted} />
+            </Pressable>
+          ) : null}
           <Pressable
-            onPress={() => setVerificationVisible(true)}
+            onPress={openPasswordModal}
             style={({ pressed }) => [
               styles.actionRow,
               styles.dividedAction,
@@ -352,23 +441,25 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
             accessibilityRole="button"
           >
             <View style={styles.actionIcon}>
-              <ShieldCheck size={18} color={colors.accentDark} />
+              <KeyRound size={18} color={colors.primary} />
             </View>
-            <Text style={styles.actionLabel}>Validação Cadastral</Text>
+            <Text style={styles.actionLabel}>Alterar Senha</Text>
             <ChevronRight size={19} color={colors.muted} />
           </Pressable>
           <Pressable
-            onPress={openPasswordModal}
+            onPress={openDeleteAccountModal}
             style={({ pressed }) => [
               styles.actionRow,
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
           >
-            <View style={styles.actionIcon}>
-              <KeyRound size={18} color={colors.primary} />
+            <View style={[styles.actionIcon, styles.deleteActionIcon]}>
+              <Trash2 size={18} color={colors.destructive} />
             </View>
-            <Text style={styles.actionLabel}>Alterar Senha</Text>
+            <Text style={[styles.actionLabel, styles.deleteActionLabel]}>
+              Apagar conta
+            </Text>
             <ChevronRight size={19} color={colors.muted} />
           </Pressable>
         </View>
@@ -488,11 +579,97 @@ export function PersonalInfoScreen({ onBack }: { onBack: () => void }) {
           </View>
         </SafeAreaView>
       </Modal>
-      <IdentityVerificationWizard
-        visible={verificationVisible}
-        email={personalInfo?.institutionalEmail ?? ''}
-        onClose={() => setVerificationVisible(false)}
-      />
+      <Modal
+        visible={deleteModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeDeleteAccountModal}
+      >
+        <SafeAreaView style={styles.passwordModal}>
+          <View style={styles.passwordModalHeader}>
+            <View style={styles.passwordModalTitleRow}>
+              <Text
+                style={styles.passwordModalTitle}
+                accessibilityRole="header"
+              >
+                Apagar conta
+              </Text>
+              <Pressable
+                onPress={closeDeleteAccountModal}
+                disabled={deletingAccount}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
+              >
+                <X size={24} color={colors.primary} />
+              </Pressable>
+            </View>
+            <Text style={styles.passwordModalDescription}>
+              Esta ação é permanente. Seus dados de identificação direta e
+              documentos serão removidos. Alguns registros de caronas poderão
+              permanecer sem esses dados, com um identificador técnico para
+              manter o histórico. Caronas futuras, solicitações pendentes e
+              reservas confirmadas precisam ser resolvidas antes.
+            </Text>
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.passwordModalContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <TextField
+              label="Senha atual"
+              icon={KeyRound}
+              password
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoComplete="current-password"
+              textContentType="password"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!deletingAccount}
+              returnKeyType="done"
+              onSubmitEditing={() => void submitAccountDeletion()}
+            />
+            {deleteError ? <Message tone="error">{deleteError}</Message> : null}
+          </ScrollView>
+          <View style={styles.passwordModalFooter}>
+            <Pressable
+              onPress={() => void submitAccountDeletion()}
+              disabled={deletingAccount}
+              style={({ pressed }) => [
+                styles.deleteAccountButton,
+                pressed && !deletingAccount && styles.pressed,
+                deletingAccount && styles.deleteAccountButtonDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{
+                busy: deletingAccount,
+                disabled: deletingAccount,
+              }}
+            >
+              {deletingAccount ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.deleteAccountButtonLabel}>
+                  Apagar minha conta
+                </Text>
+              )}
+            </Pressable>
+            <Button
+              title="Cancelar"
+              variant="outline"
+              onPress={closeDeleteAccountModal}
+              disabled={deletingAccount}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+      {!personalInfo?.roles.some(({ role }) => role.name === "ADMIN") ? (
+        <IdentityVerificationWizard
+          visible={verificationVisible}
+          onClose={() => setVerificationVisible(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -514,8 +691,8 @@ function Header({ onBack }: { onBack: () => void }) {
 }
 
 function maskCpf(cpf: string) {
-  const digits = cpf.replace(/\D/g, '');
-  if (digits.length !== 11) return '***.***.***-**';
+  const digits = cpf.replace(/\D/g, "");
+  if (digits.length !== 11) return "***.***.***-**";
   return `***.${digits.slice(3, 6)}.${digits.slice(6, 9)}-**`;
 }
 
@@ -528,9 +705,9 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   passwordModalTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   passwordModalTitle: {
     fontFamily: fonts.bold,
@@ -546,17 +723,17 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   passwordModalContent: {
-    width: '100%',
+    width: "100%",
     maxWidth: maxContentWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
     gap: 18,
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
   passwordModalFooter: {
-    width: '100%',
+    width: "100%",
     maxWidth: maxContentWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
     gap: 10,
     padding: 24,
     borderTopWidth: 1,
@@ -565,16 +742,16 @@ const styles = StyleSheet.create({
   },
   header: {
     minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.primary,
     paddingHorizontal: 16,
   },
   backButton: {
     width: 42,
     height: 48,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
   headerTitle: {
     fontFamily: fonts.bold,
@@ -583,17 +760,17 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1, backgroundColor: colors.background },
   content: {
-    width: '100%',
+    width: "100%",
     maxWidth: maxContentWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
     paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 20,
   },
   loading: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
   },
   loadingText: {
@@ -603,13 +780,13 @@ const styles = StyleSheet.create({
   },
   errorState: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     padding: 20,
     gap: 14,
   },
   errorBanner: { marginBottom: 14 },
   photoSection: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 24,
     gap: 8,
   },
@@ -617,8 +794,8 @@ const styles = StyleSheet.create({
     width: 82,
     height: 82,
     borderRadius: 41,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.accent,
   },
   photo: { width: 82, height: 82, borderRadius: 41 },
@@ -628,14 +805,14 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   cameraBadge: {
-    position: 'absolute',
+    position: "absolute",
     right: -2,
     bottom: -1,
     width: 28,
     height: 28,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: colors.background,
     backgroundColor: colors.primary,
@@ -646,7 +823,7 @@ const styles = StyleSheet.create({
     color: colors.accentDark,
   },
   fieldsCard: {
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 16,
@@ -655,7 +832,7 @@ const styles = StyleSheet.create({
   },
   fieldRow: {
     minHeight: 72,
-    justifyContent: 'center',
+    justifyContent: "center",
     gap: 5,
     paddingHorizontal: 16,
     paddingVertical: 11,
@@ -676,7 +853,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
   },
-  editableValueRow: { flexDirection: 'row', alignItems: 'center' },
+  editableValueRow: { flexDirection: "row", alignItems: "center" },
   editableInput: {
     flex: 1,
     minHeight: 23,
@@ -687,19 +864,19 @@ const styles = StyleSheet.create({
   },
   lockedValueRow: {
     minHeight: 23,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
   lockedValue: {
     flex: 1,
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#7890B3',
+    color: "#7890B3",
   },
   actionsCard: {
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
@@ -707,8 +884,8 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     paddingHorizontal: 14,
   },
@@ -717,20 +894,37 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EFF6FF',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
   },
+  deleteActionIcon: { backgroundColor: "#FEF2F2" },
   actionLabel: {
     flex: 1,
     fontFamily: fonts.medium,
     fontSize: 14,
     color: colors.primary,
   },
+  deleteActionLabel: { color: colors.destructive },
+  deleteAccountButton: {
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: colors.destructive,
+  },
+  deleteAccountButtonDisabled: { opacity: 0.5 },
+  deleteAccountButtonLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.white,
+  },
   footer: {
-    width: '100%',
+    width: "100%",
     maxWidth: maxContentWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
     paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 10,
@@ -740,8 +934,8 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 14,
     backgroundColor: colors.accent,
   },

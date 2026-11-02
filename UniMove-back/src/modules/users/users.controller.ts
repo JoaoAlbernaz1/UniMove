@@ -22,7 +22,6 @@ import { PASSWORD_ERROR, passwordOptions } from '../auth/registration-policy';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { UserStatus } from '../../generated/prisma/enums';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AllowIncompleteProfile } from '../../common/decorators/profile.decorators';
 import { CompleteProfileDto } from './profile.dto';
@@ -32,6 +31,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { UpdatePersonalInfoDto } from './personal-info.dto';
 import { PersonalInfoUploadPipe } from './personal-info-upload.pipe';
 import { PROFILE_PHOTO_MAX_BYTES, ProfilePhotoService } from './profile-photo.service';
+import { AccountDeletionService } from './account-deletion.service';
 
 class UpdateMeDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -46,12 +46,17 @@ class ChangePasswordDto {
   @IsString() @IsStrongPassword(passwordOptions, { message: PASSWORD_ERROR }) newPassword!: string;
 }
 
+class DeleteAccountDto {
+  @IsString() @MinLength(1) currentPassword!: string;
+}
+
 const personalInfoSelect = {
   id: true,
   fullName: true,
   institutionalEmail: true,
   studentNumber: true,
   cpf: true,
+  roles: { select: { role: { select: { name: true } } } },
   profilePhoto: { select: { updatedAt: true } },
 } as const;
 
@@ -67,6 +72,7 @@ export class UsersController {
     private readonly prisma: PrismaService,
     private readonly achievements: AchievementsService,
     private readonly profilePhotos: ProfilePhotoService,
+    private readonly accountDeletion: AccountDeletionService,
   ) {}
   @Get('achievements') listAchievements(@CurrentUser() user: AuthUser) {
     return this.achievements.list(user.id);
@@ -211,14 +217,10 @@ export class UsersController {
     ]);
     return { changed: true };
   }
-  @Delete() @HttpCode(204) async deactivate(@CurrentUser() user: AuthUser) {
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        status: UserStatus.DEACTIVATED,
-        deletedAt: new Date(),
-        fullName: 'Usuário desativado',
-      },
-    });
+  @Delete() @HttpCode(204) async deactivate(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    await this.accountDeletion.deleteAccount(user.id, dto.currentPassword);
   }
 }

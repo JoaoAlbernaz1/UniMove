@@ -24,6 +24,7 @@ import {
 } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
+import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, Weekday } from '../../generated/prisma/enums';
 
@@ -45,7 +46,9 @@ class UpdateRouteTemplateDto {
 @Roles(RoleName.DRIVER)
 export class RouteTemplatesController {
   constructor(private readonly prisma: PrismaService) {}
-  @Post() async create(@CurrentUser() user: AuthUser, @Body() dto: CreateRouteTemplateDto) {
+  @Post()
+  @RequireAcademicVerification()
+  async create(@CurrentUser() user: AuthUser, @Body() dto: CreateRouteTemplateDto) {
     if (
       !(await this.prisma.driverLicense.findUnique({
         where: { userId: user.id },

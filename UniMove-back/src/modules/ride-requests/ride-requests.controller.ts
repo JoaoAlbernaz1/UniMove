@@ -10,6 +10,7 @@ import {
 import { IsOptional } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
+import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import {
   NotificationType,
@@ -73,7 +74,9 @@ export class RideRequestsController {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
   ) {}
-  @Post(':id/accept') async accept(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  @Post(':id/accept')
+  @RequireAcademicVerification()
+  async accept(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.prisma.$transaction(
       async (tx) => {
         const initial = await tx.rideRequest.findUnique({ where: { id } });
@@ -81,10 +84,25 @@ export class RideRequestsController {
         await tx.$queryRaw`SELECT id FROM rides WHERE id = ${initial.rideId}::uuid FOR UPDATE`;
         const request = await tx.rideRequest.findUniqueOrThrow({
           where: { id },
-          include: { ride: true },
+          include: {
+            ride: true,
+            passenger: {
+              select: {
+                roles: { select: { role: { select: { name: true } } } },
+                academicVerification: { select: { status: true } },
+              },
+            },
+          },
         });
         if (request.ride.driverId !== user.id)
           throw new NotFoundException('Solicitação não encontrada.');
+        if (
+          request.passenger.academicVerification?.status !== 'APPROVED' &&
+          !request.passenger.roles.some(({ role }) => role.name === RoleName.ADMIN)
+        )
+          throw new ConflictException(
+            'O passageiro precisa concluir a validação cadastral antes da confirmação da vaga.',
+          );
         if (request.status === RideRequestStatus.ACCEPTED)
           return tx.rideReservation.findUnique({ where: { requestId: id } });
         if (request.status !== RideRequestStatus.PENDING || request.expiresAt <= new Date())

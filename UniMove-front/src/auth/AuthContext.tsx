@@ -18,6 +18,7 @@ type AuthContextValue = {
   status: Status;
   // true logo depois do cadastro, para a Home mostrar a confirmação do UC01.
   justRegistered: boolean;
+  consumeRegistrationNotice: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: authApi.RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
@@ -109,6 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refreshToken) await authApi.logout(refreshToken).catch(() => {});
   }, [storeTokens]);
 
+  const consumeRegistrationNotice = useCallback(() => {
+    setJustRegistered(false);
+  }, []);
+
   const authenticatedApi = useCallback(
     async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
       const token = tokensRef.current?.accessToken;
@@ -148,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       justRegistered,
+      consumeRegistrationNotice,
       signIn,
       signUp,
       signOut,
@@ -155,7 +161,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authApi: authenticatedApi,
       authFetch: authenticatedFetch,
     }),
-    [status, justRegistered, signIn, signUp, signOut, refreshSession, authenticatedApi, authenticatedFetch],
+    [
+      status,
+      justRegistered,
+      consumeRegistrationNotice,
+      signIn,
+      signUp,
+      signOut,
+      refreshSession,
+      authenticatedApi,
+      authenticatedFetch,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

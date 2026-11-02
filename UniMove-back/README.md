@@ -74,24 +74,29 @@ dos dados, inclusive na edição, impedindo remover os obrigatórios depois.
 `GET /api/v1/users/me/profile-policy` fornece limites e orientações ao formulário.
 `GET /api/v1/users/me` retorna os dados reais e `profileCompletedAt`.
 
+`DELETE /api/v1/users/me` exige a senha atual e apaga a conta de forma
+irreversível. A operação é recusada enquanto houver carona futura como motorista,
+solicitação pendente ou reserva confirmada. Após a confirmação, identificadores
+diretos e documentos pessoais são removidos, sessões são invalidadas e o perfil
+é desidentificado. Registros operacionais mínimos permanecem sem nome, CPF,
+e-mail, matrícula, comentários ou mensagens associados; o UUID técnico do
+registro pode permanecer para preservar relações históricas, portanto isso é
+pseudonimização, não promessa de anonimização irreversível. Contas desativadas
+não podem continuar usando tokens de acesso existentes.
+
 A migração `202610290003_required_profile` adiciona os campos sem preencher dados
 fictícios em contas antigas. Enquanto `profileCompletedAt` for nulo, o guard da
 API responde 403 com código `PROFILE_INCOMPLETE` nas demais funcionalidades.
 Autenticação e gestão da própria conta permanecem acessíveis. Após concluir,
 o mesmo token já pode acessar as funcionalidades; não é necessário novo login.
 
-## Validação cadastral em duas etapas
+## Validação cadastral por comprovante acadêmico
 
-1. `POST /api/v1/users/me/verification/email/code` envia um código de seis
-   dígitos distintos para o e-mail institucional cadastrado. O código expira em
-   10 minutos, pode ser reenviado após 60 segundos, permite até cinco tentativas
-   e é armazenado como HMAC, nunca em texto puro. `POST
-   /api/v1/users/me/verification/email/confirm` confirma o código.
-2. `POST /api/v1/users/me/verification/academic-document` recebe
-   `multipart/form-data` com o campo `document`. Aceita PDF digital de até 5 MB
-   e cinco páginas, extrai texto localmente e compara nome, matrícula, curso,
-   modelo da declaração e código GUID do relatório com o perfil. PDFs escaneados
-   sem texto extraível não são aceitos. O arquivo não é persistido.
+`POST /api/v1/users/me/verification/academic-document` recebe
+`multipart/form-data` com o campo `document`. Aceita PDF digital de até 5 MB
+e cinco páginas, extrai texto localmente e compara nome, matrícula, curso,
+modelo da declaração e código GUID do relatório com o perfil. PDFs escaneados
+sem texto extraível não são aceitos. O arquivo não é persistido.
 
 Uma correspondência de texto não comprova autenticidade. A solicitação permanece
 `PENDING_REVIEW` até que um administrador do UniMove confira o GUID no validador
@@ -107,13 +112,29 @@ executa `npm run prisma:seed` uma vez em ambiente seguro conectado ao banco; a
 role é adicionada sem trocar a senha da conta. Remova a variável após a operação.
 Alterar nome, matrícula ou curso invalida uma validação anterior.
 
-Para habilitar o envio, configure no backend `EMAIL_VERIFICATION_SECRET` com ao
-menos 32 caracteres, `RESEND_API_KEY` e `RESEND_FROM`. O remetente precisa usar
-um domínio próprio verificado no Resend; `*.vercel.app` não pode ser usado como
-domínio remetente. O plano gratuito consultado inclui até 3.000 mensagens por
-mês e 100 por dia: https://resend.com/pricing. Configure as variáveis no serviço
-que hospeda a API, nunca no app ou no repositório. A migração
-`202610300001_identity_verification` cria os dados de verificação.
+A migração `202610300001_identity_verification` cria os dados da validação
+acadêmica. A migração `202611010001_remove_email_code_verification` remove a
+estrutura que havia sido criada para confirmação por código de e-mail.
+
+A validação acadêmica aprovada é obrigatória para usuários buscarem ou
+oferecerem caronas, solicitarem vagas e confirmarem solicitações. A exigência é
+aplicada pela API; usuários sem comprovante, pendentes ou rejeitados recebem
+bloqueio, e caronas de motoristas sem aprovação não aparecem nas buscas. Contas
+com role `ADMIN` são isentas dessa exigência e continuam podendo revisar os
+documentos. As demais exigências de motorista, como role `DRIVER` e CNH,
+continuam valendo.
+Contas com role `ADMIN` também não precisam enviar comprovante; elas continuam
+com acesso à tela administrativa para aprovar ou rejeitar as solicitações.
+
+O PDF é recebido em memória pelo backend, analisado e descartado ao final da
+requisição (os buffers usados pela aplicação são zerados). Nenhum arquivo é
+gravado no banco ou apresentado na fila administrativa. Documentos ilegíveis,
+fora do modelo ou com dados divergentes são recusados automaticamente e não
+entram na fila. Para os PDFs aceitos, a tela **Configurações > Administração >
+Revisões cadastrais** mostra os dados do usuário e o GUID; o administrador
+consulta o GUID no portal oficial e aprova ou rejeita o resultado. O banco
+persiste status, GUID, decisão, responsável, horário e motivo da rejeição, não
+o conteúdo do PDF.
 
 ## Cadastro de veículos e habilitação de motorista
 

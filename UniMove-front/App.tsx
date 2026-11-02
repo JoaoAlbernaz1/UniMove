@@ -7,6 +7,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -36,6 +37,8 @@ import { CompleteProfileScreen } from './src/screens/CompleteProfileScreen';
 import { getMyProfile, type Profile } from './src/services/profileService';
 import { Button } from './src/components/Button';
 import { Message } from './src/components/Message';
+import type { Me } from './src/api/auth';
+import { getIdentityVerificationStatus } from './src/services/identityVerificationService';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -146,6 +149,7 @@ function SignedOutApp() {
 }
 
 function SignedInApp() {
+  const { authApi } = useAuth();
   const [loggedScreen, setLoggedScreen] = useState<
     | 'Home'
     | 'SearchRide'
@@ -163,6 +167,61 @@ function SignedInApp() {
     useState<Conversation | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [profileUserId, setProfileUserId] = useState<string>('');
+  const [openVerificationOnPersonalInfo, setOpenVerificationOnPersonalInfo] =
+    useState(false);
+
+  async function offerRideFromVehicle() {
+    try {
+      const currentUser = await authApi<Me>('/users/me');
+      const isAdmin = currentUser.roles?.some(
+        ({ role }) => role.name === 'ADMIN',
+      );
+      if (!isAdmin) {
+        const verification = await getIdentityVerificationStatus(authApi);
+        if (verification.academic?.status !== 'APPROVED') {
+          const isPending =
+            verification.academic?.status === 'PENDING_REVIEW';
+          const isRejected = verification.academic?.status === 'REJECTED';
+          Alert.alert(
+            isPending
+              ? 'Validação em análise'
+              : 'Validação cadastral necessária',
+            isPending
+              ? 'Seu comprovante já foi enviado e está em análise pela equipe UniMove. Aguarde a conclusão da revisão; não é necessário enviar o documento novamente.'
+              : isRejected
+                ? 'Sua validação foi rejeitada. Consulte o motivo e envie um novo comprovante para voltar a oferecer caronas.'
+                : 'Para oferecer caronas, envie seu comprovante de matrícula e aguarde a revisão da equipe UniMove.',
+            [
+              {
+                text: isPending ? 'Cancelar' : 'Agora não',
+                style: 'cancel',
+              },
+              {
+                text: isPending
+                  ? 'Acompanhar andamento'
+                  : isRejected
+                    ? 'Corrigir validação'
+                    : 'Ir para validação',
+                onPress: () => {
+                  setOpenVerificationOnPersonalInfo(true);
+                  setLoggedScreen('PersonalInfo');
+                },
+              },
+            ],
+          );
+          return;
+        }
+      }
+      setLoggedScreen('OfferRide');
+    } catch (reason) {
+      Alert.alert(
+        'Não foi possível verificar seu cadastro',
+        reason instanceof Error
+          ? reason.message
+          : 'Tente novamente em instantes.',
+      );
+    }
+  }
 
   function renderScreen() {
     if (loggedScreen === 'Chat' && activeConversation && userId) {
@@ -204,7 +263,7 @@ function SignedInApp() {
       return (
         <RegisterVehicleScreen
           onBack={() => setLoggedScreen('Profile')}
-          onOfferRide={() => setLoggedScreen('OfferRide')}
+          onOfferRide={() => void offerRideFromVehicle()}
         />
       );
     if (loggedScreen === 'Settings')
@@ -218,7 +277,18 @@ function SignedInApp() {
         />
       );
     if (loggedScreen === 'PersonalInfo')
-      return <PersonalInfoScreen onBack={() => setLoggedScreen('Settings')} />;
+      return (
+        <PersonalInfoScreen
+          openVerificationOnMount={openVerificationOnPersonalInfo}
+          onVerificationPromptConsumed={() =>
+            setOpenVerificationOnPersonalInfo(false)
+          }
+          onBack={() => {
+            setOpenVerificationOnPersonalInfo(false);
+            setLoggedScreen('Settings');
+          }}
+        />
+      );
     if (loggedScreen === 'AdminVerification')
       return (
         <AdminVerificationScreen onBack={() => setLoggedScreen('Settings')} />
@@ -234,6 +304,10 @@ function SignedInApp() {
           setLoggedScreen('Profile');
         }}
         onNavigateSettings={() => setLoggedScreen('Settings')}
+        onNavigatePersonalInfo={(openVerification) => {
+          setOpenVerificationOnPersonalInfo(openVerification);
+          setLoggedScreen('PersonalInfo');
+        }}
       />
     );
   }

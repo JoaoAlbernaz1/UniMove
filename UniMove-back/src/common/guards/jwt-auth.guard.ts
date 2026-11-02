@@ -4,7 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY, AuthUser } from '../decorators/auth.decorators';
-import { RoleName } from '../../generated/prisma/enums';
+import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { PrismaService } from '../../database/prisma.service';
 
 interface AccessPayload {
   sub: string;
@@ -18,6 +19,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext) {
@@ -31,15 +33,23 @@ export class JwtAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { user: AuthUser }>();
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     if (type !== 'Bearer' || !token) throw new UnauthorizedException('Token de acesso ausente.');
+    let payload: AccessPayload;
     try {
-      const payload = await this.jwt.verifyAsync<AccessPayload>(token, {
+      payload = await this.jwt.verifyAsync<AccessPayload>(token, {
         secret: this.config.getOrThrow('auth.accessSecret'),
       });
-      if (payload.type !== 'access') throw new Error('invalid token type');
-      request.user = { id: payload.sub, roles: payload.roles };
-      return true;
     } catch {
       throw new UnauthorizedException('Token de acesso inválido ou expirado.');
     }
+    if (payload.type !== 'access')
+      throw new UnauthorizedException('Token de acesso inválido ou expirado.');
+    const account = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { status: true },
+    });
+    if (account?.status !== UserStatus.ACTIVE)
+      throw new UnauthorizedException('Conta indisponível para acesso.');
+    request.user = { id: payload.sub, roles: payload.roles };
+    return true;
   }
 }

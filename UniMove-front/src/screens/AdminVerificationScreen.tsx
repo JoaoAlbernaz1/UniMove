@@ -142,8 +142,9 @@ export function AdminVerificationScreen({ onBack }: { onBack: () => void }) {
         }
       >
         <Text style={styles.description}>
-          Abra o validador oficial, informe o código do relatório e compare
-          nome, matrícula e curso antes de aprovar.
+          Os PDFs são conferidos automaticamente e descartados após o
+          processamento. Abra o validador oficial, informe o código do relatório
+          e compare nome, matrícula e curso antes de aprovar ou rejeitar.
         </Text>
         <Button
           title="Abrir validador oficial TOTVS"

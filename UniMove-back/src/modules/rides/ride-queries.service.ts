@@ -29,6 +29,20 @@ export class RideQueriesService {
       Prisma.sql`r.status IN ('OPEN', 'SCHEDULED')`,
       Prisma.sql`r.departure_at > NOW()`,
       Prisma.sql`r.available_seats > 0`,
+      Prisma.sql`(
+        EXISTS (
+          SELECT 1
+          FROM academic_verifications av
+          WHERE av.user_id = r.driver_id
+            AND av.status = 'APPROVED'
+        ) OR EXISTS (
+          SELECT 1
+          FROM user_roles ur
+          JOIN roles role ON role.id = ur.role_id
+          WHERE ur.user_id = r.driver_id
+            AND role.name = 'ADMIN'
+        )
+      )`,
     ];
     if (query.origin?.trim())
       conditions.push(
