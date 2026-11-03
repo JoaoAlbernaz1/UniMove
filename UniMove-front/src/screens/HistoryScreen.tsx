@@ -42,7 +42,7 @@ const routeDot = '#CBD5E1';
 const sheetDivider = '#F1F5F9';
 
 type Tab = 'todas' | 'oferecidas' | 'recebidas';
-type Period = '7d' | 'mes' | 'mes-ant' | 'custom';
+type Period = 'todos' | '7d' | 'mes' | 'mes-ant' | 'custom';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'todas', label: 'Todas' },
@@ -51,6 +51,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const PERIODS: { value: Period; label: string }[] = [
+  { value: 'todos', label: 'Todo o período' },
   { value: '7d', label: 'Últimos 7 dias' },
   { value: 'mes', label: 'Este mês' },
   { value: 'mes-ant', label: 'Mês passado' },
@@ -58,6 +59,9 @@ const PERIODS: { value: Period; label: string }[] = [
 ];
 
 const STATUSES = [
+  { value: 'Agendada', label: 'Agendadas' },
+  { value: 'Aberta', label: 'Abertas' },
+  { value: 'Em andamento', label: 'Em andamento' },
   { value: 'Concluída', label: 'Concluídas' },
   { value: 'Cancelada', label: 'Canceladas' },
 ];
@@ -74,6 +78,9 @@ function parseDate(text: string) {
 }
 
 function periodRange(period: Period, from: string, to: string) {
+  if (period === 'todos') {
+    return { start: null, end: null };
+  }
   const now = new Date();
   if (period === '7d') {
     const start = new Date(now);
@@ -191,10 +198,10 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
 
   const [activeTab, setActiveTab] = useState<Tab>('todas');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [period, setPeriod] = useState<Period>('mes');
+  const [period, setPeriod] = useState<Period>('todos');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [activeStatuses, setActiveStatuses] = useState<string[]>(['Concluída']);
+  const [activeStatuses, setActiveStatuses] = useState<string[]>([]);
 
   // A primeira carga já nasce com loading ligado; só a recarga manual o reativa,
   // o que mantém o efeito livre de setState síncrono.
@@ -240,10 +247,11 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
     );
 
   const clearFilters = () => {
-    setPeriod('mes');
+    setActiveTab('todas');
+    setPeriod('todos');
     setCustomFrom('');
     setCustomTo('');
-    setActiveStatuses(['Concluída']);
+    setActiveStatuses([]);
   };
 
   return (
