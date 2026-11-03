@@ -74,7 +74,12 @@ function parseDate(text: string) {
   if (!match) return null;
   const [, day, month, year] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day));
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) return null;
+  return date;
 }
 
 function periodRange(period: Period, from: string, to: string) {
@@ -214,12 +219,13 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
       setError(null);
     }
     try {
-      const [list, totals] = await Promise.all([
+      const [list, totals] = await Promise.allSettled([
         fetchHistory(authApi, 1, PAGE_SIZE),
         fetchHistorySummary(authApi),
       ]);
-      setItems(list);
-      setSummary(totals);
+      if (list.status === 'rejected') throw list.reason;
+      setItems(list.value);
+      setSummary(totals.status === 'fulfilled' ? totals.value : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível carregar o histórico.');
     } finally {
@@ -228,7 +234,10 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
   }, [authApi]);
 
   useEffect(() => {
-    void load();
+    const timeout = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [load]);
 
   const visible = useMemo(() => {
