@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import type { Me } from "../api/auth";
 import type { AvailableChatParticipant, Conversation } from "../api/messages";
-import { colors, fonts, maxContentWidth, radius } from "../theme";
+import { colors, fonts, maxContentWidth } from "../theme";
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -98,9 +98,12 @@ export function MessagesScreen({
   }
 
   useEffect(() => {
-    void load();
+    const initialLoad = setTimeout(() => void load(), 0);
     const interval = setInterval(() => void load(true), 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [load]);
 
   return (
