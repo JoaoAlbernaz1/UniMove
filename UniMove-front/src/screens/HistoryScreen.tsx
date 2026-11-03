@@ -85,10 +85,13 @@ function periodRange(period: Period, from: string, to: string) {
   if (period === '7d') {
     const start = new Date(now);
     start.setDate(start.getDate() - 7);
-    return { start, end: null as Date | null };
+    return { start, end: now };
   }
   if (period === 'mes') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: null };
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    };
   }
   if (period === 'mes-ant') {
     return {
