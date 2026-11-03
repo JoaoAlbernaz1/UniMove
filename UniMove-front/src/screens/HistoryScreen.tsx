@@ -203,6 +203,10 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
   const [summary, setSummary] = useState<HistorySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>('todas');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -225,6 +229,9 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
       ]);
       if (list.status === 'rejected') throw list.reason;
       setItems(list.value);
+      setPage(1);
+      setHasMore(list.value.length === PAGE_SIZE);
+      setLoadMoreError(null);
       setSummary(totals.status === 'fulfilled' ? totals.value : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível carregar o histórico.');
@@ -232,6 +239,26 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
       setLoading(false);
     }
   }, [authApi]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const nextPage = page + 1;
+      const nextItems = await fetchHistory(authApi, nextPage, PAGE_SIZE);
+      setItems((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        return [...current, ...nextItems.filter((item) => !existingIds.has(item.id))];
+      });
+      setPage(nextPage);
+      setHasMore(nextItems.length === PAGE_SIZE);
+    } catch (e) {
+      setLoadMoreError(e instanceof Error ? e.message : 'Não foi possível carregar mais caronas.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [authApi, hasMore, loadingMore, page]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -353,12 +380,30 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
               <Text style={styles.stateText}>
                 {items.length === 0
                   ? 'Quando você oferecer ou pegar uma carona, ela aparece aqui.'
-                  : 'Nenhuma carona corresponde aos filtros escolhidos.'}
+                  : hasMore
+                    ? 'Nenhuma carona corresponde aos filtros nesta página. Carregue mais para continuar buscando.'
+                    : 'Nenhuma carona corresponde aos filtros escolhidos.'}
               </Text>
             </View>
           ) : (
             visible.map((item) => <RideCard key={item.id} item={item} />)
           )}
+          {!loading && !error && hasMore ? (
+            <View style={styles.state}>
+              {loadMoreError ? <Text style={styles.stateText}>{loadMoreError}</Text> : null}
+              <Pressable
+                onPress={() => void loadMore()}
+                disabled={loadingMore}
+                accessibilityRole="button"
+                accessibilityLabel="Carregar mais caronas"
+                style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+              >
+                <Text style={styles.retryText}>
+                  {loadingMore ? 'Carregando…' : 'Carregar mais caronas'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
