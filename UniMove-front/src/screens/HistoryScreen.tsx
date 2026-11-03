@@ -42,7 +42,7 @@ const routeDot = '#CBD5E1';
 const sheetDivider = '#F1F5F9';
 
 type Tab = 'todas' | 'oferecidas' | 'recebidas';
-type Period = '7d' | 'mes' | 'mes-ant' | 'custom';
+type Period = 'todos' | '7d' | 'mes' | 'mes-ant' | 'custom';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'todas', label: 'Todas' },
@@ -51,6 +51,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const PERIODS: { value: Period; label: string }[] = [
+  { value: 'todos', label: 'Todo o período' },
   { value: '7d', label: 'Últimos 7 dias' },
   { value: 'mes', label: 'Este mês' },
   { value: 'mes-ant', label: 'Mês passado' },
@@ -58,6 +59,9 @@ const PERIODS: { value: Period; label: string }[] = [
 ];
 
 const STATUSES = [
+  { value: 'Agendada', label: 'Agendadas' },
+  { value: 'Aberta', label: 'Abertas' },
+  { value: 'Em andamento', label: 'Em andamento' },
   { value: 'Concluída', label: 'Concluídas' },
   { value: 'Cancelada', label: 'Canceladas' },
 ];
@@ -70,18 +74,29 @@ function parseDate(text: string) {
   if (!match) return null;
   const [, day, month, year] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day));
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) return null;
+  return date;
 }
 
 function periodRange(period: Period, from: string, to: string) {
+  if (period === 'todos') {
+    return { start: null, end: null };
+  }
   const now = new Date();
   if (period === '7d') {
     const start = new Date(now);
     start.setDate(start.getDate() - 7);
-    return { start, end: null as Date | null };
+    return { start, end: now };
   }
   if (period === 'mes') {
-    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: null };
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    };
   }
   if (period === 'mes-ant') {
     return {
@@ -188,13 +203,17 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
   const [summary, setSummary] = useState<HistorySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>('todas');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [period, setPeriod] = useState<Period>('mes');
+  const [period, setPeriod] = useState<Period>('todos');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [activeStatuses, setActiveStatuses] = useState<string[]>(['Concluída']);
+  const [activeStatuses, setActiveStatuses] = useState<string[]>([]);
 
   // A primeira carga já nasce com loading ligado; só a recarga manual o reativa,
   // o que mantém o efeito livre de setState síncrono.
@@ -204,12 +223,16 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
       setError(null);
     }
     try {
-      const [list, totals] = await Promise.all([
+      const [list, totals] = await Promise.allSettled([
         fetchHistory(authApi, 1, PAGE_SIZE),
         fetchHistorySummary(authApi),
       ]);
-      setItems(list);
-      setSummary(totals);
+      if (list.status === 'rejected') throw list.reason;
+      setItems(list.value);
+      setPage(1);
+      setHasMore(list.value.length === PAGE_SIZE);
+      setLoadMoreError(null);
+      setSummary(totals.status === 'fulfilled' ? totals.value : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível carregar o histórico.');
     } finally {
@@ -217,8 +240,31 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
     }
   }, [authApi]);
 
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const nextPage = page + 1;
+      const nextItems = await fetchHistory(authApi, nextPage, PAGE_SIZE);
+      setItems((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        return [...current, ...nextItems.filter((item) => !existingIds.has(item.id))];
+      });
+      setPage(nextPage);
+      setHasMore(nextItems.length === PAGE_SIZE);
+    } catch (e) {
+      setLoadMoreError(e instanceof Error ? e.message : 'Não foi possível carregar mais caronas.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [authApi, hasMore, loadingMore, page]);
+
   useEffect(() => {
-    void load();
+    const timeout = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [load]);
 
   const visible = useMemo(() => {
@@ -240,10 +286,11 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
     );
 
   const clearFilters = () => {
-    setPeriod('mes');
+    setActiveTab('todas');
+    setPeriod('todos');
     setCustomFrom('');
     setCustomTo('');
-    setActiveStatuses(['Concluída']);
+    setActiveStatuses([]);
   };
 
   return (
@@ -333,12 +380,30 @@ export function HistoryScreen({ onBack }: { onBack: () => void }) {
               <Text style={styles.stateText}>
                 {items.length === 0
                   ? 'Quando você oferecer ou pegar uma carona, ela aparece aqui.'
-                  : 'Nenhuma carona corresponde aos filtros escolhidos.'}
+                  : hasMore
+                    ? 'Nenhuma carona corresponde aos filtros nesta página. Carregue mais para continuar buscando.'
+                    : 'Nenhuma carona corresponde aos filtros escolhidos.'}
               </Text>
             </View>
           ) : (
             visible.map((item) => <RideCard key={item.id} item={item} />)
           )}
+          {!loading && !error && hasMore ? (
+            <View style={styles.state}>
+              {loadMoreError ? <Text style={styles.stateText}>{loadMoreError}</Text> : null}
+              <Pressable
+                onPress={() => void loadMore()}
+                disabled={loadingMore}
+                accessibilityRole="button"
+                accessibilityLabel="Carregar mais caronas"
+                style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+              >
+                <Text style={styles.retryText}>
+                  {loadingMore ? 'Carregando…' : 'Carregar mais caronas'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
