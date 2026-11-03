@@ -1,3 +1,6 @@
+// Registration tests do not exercise TOTP; mock the ESM-only package for Jest's CJS runner.
+jest.mock('otplib', () => ({ verify: jest.fn() }));
+
 import { ConflictException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
