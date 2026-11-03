@@ -1,5 +1,4 @@
 import {
-  Alert,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -137,13 +136,6 @@ export function HomeScreen({
   useEffect(() => {
     void loadHome();
   }, [loadHome]);
-
-  function showComingSoon(
-    feature: string,
-    description = 'Esta funcionalidade será disponibilizada em uma próxima etapa.',
-  ) {
-    Alert.alert(feature, description);
-  }
 
   async function enterRideFeature(destination: 'search' | 'offer') {
     if (checkingRideAccess) return;
