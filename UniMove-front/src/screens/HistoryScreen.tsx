@@ -23,9 +23,9 @@ import { useAuth } from '../auth/AuthContext';
 import {
   fetchHistory,
   fetchHistorySummary,
+  formatAmount,
   formatCurrency,
   formatShortDate,
-  formatSigned,
   type HistoryItem,
   type HistorySummary,
 } from '../api/history';
@@ -189,9 +189,21 @@ function RideCard({ item }: { item: HistoryItem }) {
           <Text style={styles.footerText}>·</Text>
           <Text style={styles.footerText}>{item.status}</Text>
         </View>
-        <Text style={[styles.amount, isOffered ? styles.amountIn : styles.amountOut]}>
-          {formatSigned(item.amountCents)}
-        </Text>
+        {item.amountKind === 'none' ? null : (
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.amount,
+              item.amountKind === 'expected'
+                ? styles.amountExpected
+                : isOffered
+                  ? styles.amountIn
+                  : styles.amountOut,
+            ]}
+          >
+            {formatAmount(item.amountCents, item.amountKind)}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -631,9 +643,14 @@ const styles = StyleSheet.create({
   },
   footerMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   footerText: { fontFamily: fonts.regular, fontSize: 12, color: footerMuted },
-  amount: { fontFamily: fonts.bold, fontSize: 14 },
+  // O valor nunca encolhe nem quebra: com o rótulo "previsto" ele fica longo, e
+  // num celular estreito era ele que empurrava o rodapé para duas linhas.
+  amount: { fontFamily: fonts.bold, fontSize: 14, flexShrink: 0 },
   amountIn: { color: offeredBadgeText },
   amountOut: { color: colors.destructive },
+  // Previsão fica no cinza do rodapé: o verde e o vermelho ficam reservados
+  // para o dinheiro que já entrou ou saiu.
+  amountExpected: { color: footerMuted },
 
   state: { alignItems: 'center', paddingVertical: 48, gap: 8 },
   stateTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.primary },

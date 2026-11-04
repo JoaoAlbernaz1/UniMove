@@ -4,6 +4,11 @@
 
 export type HistoryRole = 'offered' | 'received';
 
+// O dinheiro do card só é real quando a viagem aconteceu — é a mesma regra que
+// /history/summary aplica para somar ganhos e gastos. Antes disso o valor é
+// previsão, e numa carona cancelada ele nunca vai existir.
+export type HistoryAmountKind = 'settled' | 'expected' | 'none';
+
 type RawReservation = {
   passengerId: string;
   seats: number;
@@ -33,6 +38,7 @@ export type HistoryItem = {
   departureAt: string;
   passengers: number;
   amountCents: number;
+  amountKind: HistoryAmountKind;
   rating: number | null;
   status: string;
 };
@@ -72,6 +78,8 @@ export function toHistoryItem(ride: RawRide, currentUserId: string): HistoryItem
     amountCents: isDriver
       ? ride.pricePerPersonCents * seatsSold
       : -(ride.pricePerPersonCents * mySeats),
+    amountKind:
+      ride.status === 'COMPLETED' ? 'settled' : ride.status === 'CANCELLED' ? 'none' : 'expected',
     // A estrela é a nota de quem aparece no card: a sua quando você dirigiu,
     // a do motorista quando você foi passageiro.
     rating:
@@ -111,6 +119,17 @@ export function formatCurrency(cents: number) {
 export function formatSigned(cents: number) {
   if (cents === 0) return 'Solidária';
   return `${cents > 0 ? '+' : '-'}${formatCurrency(cents)}`;
+}
+
+// Só o dinheiro que já se realizou leva sinal: "+R$ 36,00" entrou, "-R$ 15,00"
+// saiu, e é isso que o cabeçalho soma. Uma carona que ainda não aconteceu
+// mostra o valor sem sinal — e em cinza, na tela —, então ninguém a confunde
+// com movimentação e a soma dos cards fecha com os totais do topo. Escrever
+// "previsto" por extenso foi tentado antes: num celular de 390px o rodapé não
+// comporta, e truncava a data e o status.
+export function formatAmount(cents: number, kind: HistoryAmountKind) {
+  if (cents === 0) return formatSigned(cents);
+  return kind === 'expected' ? formatCurrency(cents) : formatSigned(cents);
 }
 
 // "30 out" — dia e mês abreviado, como nos cartões do protótipo.
