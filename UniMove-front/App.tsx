@@ -171,6 +171,7 @@ function SignedInApp() {
     useState<Conversation | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [profileUserId, setProfileUserId] = useState<string>('');
+  const [vehicleReturnScreen, setVehicleReturnScreen] = useState<'Home' | 'Profile'>('Profile');
   const [openVerificationOnPersonalInfo, setOpenVerificationOnPersonalInfo] =
     useState(false);
 
@@ -260,13 +261,16 @@ function SignedInApp() {
         <ProfileScreen
           userId={profileUserId}
           onBack={() => setLoggedScreen('Home')}
-          onRegisterVehicle={() => setLoggedScreen('RegisterVehicle')}
+          onRegisterVehicle={() => {
+            setVehicleReturnScreen('Profile');
+            setLoggedScreen('RegisterVehicle');
+          }}
         />
       );
     if (loggedScreen === 'RegisterVehicle')
       return (
         <RegisterVehicleScreen
-          onBack={() => setLoggedScreen('Profile')}
+          onBack={() => setLoggedScreen(vehicleReturnScreen)}
           onOfferRide={() => void offerRideFromVehicle()}
         />
       );
@@ -311,6 +315,10 @@ function SignedInApp() {
       <HomeScreen
         onNavigateSearch={() => setLoggedScreen('SearchRide')}
         onNavigateOffer={() => setLoggedScreen('OfferRide')}
+        onRegisterVehicle={() => {
+          setVehicleReturnScreen('Home');
+          setLoggedScreen('RegisterVehicle');
+        }}
         onNavigateMessages={() => setLoggedScreen('Messages')}
         onNavigateHistory={() => setLoggedScreen('History')}
         onNavigateProfile={(selectedUserId) => {
