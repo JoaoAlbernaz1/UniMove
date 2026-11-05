@@ -24,6 +24,8 @@ process.env.TWO_FACTOR_ENCRYPTION_KEY = 'integration-only-two-factor-key-0123456
 process.env.JWT_ACCESS_SECRET ??= 'integration-only-access-secret-0123456789';
 process.env.JWT_REFRESH_SECRET ??= 'integration-only-refresh-secret-012345678';
 process.env.ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS ??= 'ucb.edu.br';
+process.env.SMTP_HOST = '';
+process.env.TWILIO_ACCOUNT_SID = '';
 
 const argon2 = require('argon2');
 const cookieParser = require('cookie-parser');
@@ -36,6 +38,7 @@ const { AppModule } = require('../dist/src/app.module.js');
 const { HttpExceptionFilter } = require('../dist/src/common/filters/http-exception.filter.js');
 const { PrismaClient } = require('../dist/src/generated/prisma/client.js');
 const { encryptTwoFactorSecret } = require('../dist/src/modules/auth/two-factor-crypto.js');
+const { AdminEnrollmentService } = require('../dist/src/modules/admin/admin-enrollment.service.js');
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -227,7 +230,7 @@ async function reserve(ride, passenger, seats = 1) {
 async function main() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
-  app.getHttpAdapter().getInstance().set('trust proxy', true);
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.use(cookieParser());
   app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/ready'] });
   app.useGlobalPipes(
@@ -265,22 +268,29 @@ async function main() {
     }
   });
 
-  await it('admin com perfil incompleto não é barrado por PROFILE_INCOMPLETE', async () => {
+  await it('admin do app revisa vínculos sem perfil acadêmico, mas não recebe acesso ao painel', async () => {
     const admin = await createAdmin();
     const code = await generate({ secret: admin.secret });
     const { accessToken } = await bearerLogin(admin, code);
     const response = await http
-      .get(`${API}/admin/users`)
+      .get(`${API}/admin/academic-verifications`)
       .set('Authorization', `Bearer ${accessToken}`);
     assert.equal(response.status, 200, JSON.stringify(response.body));
     assert.ok(Array.isArray(response.body));
+    const denied = await http.get(`${API}/admin/users`).set('Authorization', `Bearer ${accessToken}`);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.body.code, 'ADMIN_COOKIE_SESSION_REQUIRED');
   });
 
-  await it('admin só com senha, sem segundo fator, recebe 403 ADMIN_2FA_REQUIRED', async () => {
+  await it('admin sem fator ativo não obtém tokens do app; Bearer antigo sem MFA não revisa vínculos', async () => {
     const admin = await createUser({ roles: ['ADMIN'] });
-    const { accessToken } = await bearerLogin(admin);
+    const login = await http.post(`${API}/auth/login`).send({ email: admin.email, password: PASSWORD });
+    assert.equal(login.status, 403);
+    assert.equal(login.body.code, 'ADMIN_ENROLLMENT_REQUIRED');
+    assert.equal(login.body.accessToken, undefined);
+    const accessToken = await moduleRef.get(require('@nestjs/jwt').JwtService).signAsync({ sub: admin.id, roles: ['ADMIN'], type: 'access', mfa: false }, { secret: process.env.JWT_ACCESS_SECRET });
     const response = await http
-      .get(`${API}/admin/users`)
+      .get(`${API}/admin/academic-verifications`)
       .set('Authorization', `Bearer ${accessToken}`);
     assert.equal(response.status, 403);
     assert.equal(response.body.code, 'ADMIN_2FA_REQUIRED');
@@ -365,36 +375,37 @@ async function main() {
     assert.equal((await panel.get('/admin/users')).status, 401);
   });
 
-  await it('primeiro acesso cadastra o autenticador e entrega códigos de recuperação', async () => {
+  await it('provisionamento de operador ativa o 2FA; senha sozinha nunca entrega QR ou segredo', async () => {
     const admin = await createUser({ roles: ['ADMIN'] });
     const panel = new Panel();
     const login = await panel.post('/admin/auth/login', {
       body: { email: admin.email, password: PASSWORD },
     });
-    assert.equal(login.body.step, 'ENROLL');
-    assert.ok(login.body.enrollment.qrCode.startsWith('data:image/png'));
+    assert.equal(login.status, 403);
+    assert.equal(login.body.code, 'ADMIN_ENROLLMENT_REQUIRED');
+    assert.equal(login.body.enrollment, undefined);
+    assert.equal(panel.jar.size, 0);
+    const enrollmentService = moduleRef.get(AdminEnrollmentService);
+    const enrollment = await enrollmentService.begin(admin.email);
+    assert.ok(enrollment.qrCode.startsWith('data:image/png'));
     const wrong = await panel.post('/admin/auth/two-factor', { body: { code: '000000' } });
     assert.equal(wrong.status, 401);
     assert.equal(
       (await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } })).enabled,
       false,
     );
-    const done = await panel.post('/admin/auth/two-factor', {
-      body: { code: await generate({ secret: login.body.enrollment.secret }) },
-    });
-    assert.equal(done.status, 200, JSON.stringify(done.body));
-    assert.equal(done.body.recoveryCodes.length, 8);
-    assert.equal(done.body.user.recoveryCodesRemaining, 8, 'contagem já vem no login');
+    const done = await enrollmentService.confirm(admin.email, await generate({ secret: enrollment.secret }));
+    assert.equal(done.recoveryCodes.length, 8);
     const stored = await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } });
     assert.equal(stored.enabled, true);
-    assert.ok(!stored.recoveryCodes.includes(done.body.recoveryCodes[0]));
-    assert.ok(!stored.secret.includes(login.body.enrollment.secret));
-    assert.equal((await panel.get('/admin/auth/session')).status, 200);
+    assert.ok(!stored.recoveryCodes.includes(done.recoveryCodes[0]));
+    assert.ok(!stored.secret.includes(enrollment.secret));
+    await assert.rejects(enrollmentService.begin(admin.email), /ativ|configur/i);
 
     const again = new Panel();
     await again.post('/admin/auth/login', { body: { email: admin.email, password: PASSWORD } });
     const recovered = await again.post('/admin/auth/two-factor', {
-      body: { code: done.body.recoveryCodes[0] },
+      body: { code: done.recoveryCodes[0] },
     });
     assert.equal(recovered.status, 200, JSON.stringify(recovered.body));
     assert.equal(recovered.body.recoveryCodesRemaining, 7);
@@ -402,7 +413,7 @@ async function main() {
     const twice = new Panel();
     await twice.post('/admin/auth/login', { body: { email: admin.email, password: PASSWORD } });
     const reused = await twice.post('/admin/auth/two-factor', {
-      body: { code: done.body.recoveryCodes[0] },
+      body: { code: done.recoveryCodes[0] },
     });
     assert.equal(reused.status, 401, 'código de recuperação vale uma vez');
   });
@@ -527,6 +538,36 @@ async function main() {
     assert.equal(mobile.status, 401);
   });
 
+  await it('refresh legado de estudante promovido a ADMIN exige novo login com MFA', async () => {
+    const subject = await createUser();
+    const mobile = await bearerLogin(subject);
+    const role = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMIN' } });
+    await prisma.userRole.create({ data: { userId: subject.id, roleId: role.id } });
+    const response = await http.post(`${API}/auth/refresh`).send({ refreshToken: mobile.refreshToken });
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, 'ADMIN_2FA_REQUIRED');
+    assert.equal(response.body.accessToken, undefined);
+    assert.equal(await prisma.refreshSession.count({ where: { userId: subject.id, revokedAt: null } }), 0);
+  });
+
+  await it('refresh do app recusa ADMIN cujo segundo fator foi desativado no banco', async () => {
+    const admin = await createAdmin();
+    const mobile = await bearerLogin(admin, await generate({ secret: admin.secret }));
+    await prisma.twoFactorAuth.update({ where: { userId: admin.id }, data: { enabled: false } });
+    const response = await http.post(`${API}/auth/refresh`).send({ refreshToken: mobile.refreshToken });
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, 'ADMIN_2FA_REQUIRED');
+  });
+
+  await it('refresh do painel respeita expiração do banco antecipada sem alterar o JWT', async () => {
+    const admin = await createAdmin();
+    const session = await signIn(admin);
+    await prisma.refreshSession.updateMany({ where: { userId: admin.id, revokedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    const response = await session.post('/admin/auth/refresh');
+    assert.equal(response.status, 401);
+    assert.equal((await session.get('/admin/auth/session')).status, 401);
+  });
+
   await it('logout encerra de imediato, mesmo com o access token copiado antes', async () => {
     const admin = await createAdmin();
     const session = await signIn(admin);
@@ -573,13 +614,13 @@ async function main() {
     assert.equal(response.body.code, 'ADMIN_2FA_REQUIRED');
   });
 
-  await it('setup de 2FA não troca um segundo fator ativo; disable exige código do admin', async () => {
+  await it('admin não configura ou desativa segundo fator pelos endpoints do app', async () => {
     const admin = await createAdmin();
     const { accessToken } = await bearerLogin(admin, await generate({ secret: admin.secret }));
     const setup = await http
       .post(`${API}/users/me/two-factor/setup`)
       .set('Authorization', `Bearer ${accessToken}`);
-    assert.equal(setup.status, 409);
+    assert.equal(setup.status, 403);
     assert.equal(
       (await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } })).enabled,
       true,
@@ -589,7 +630,7 @@ async function main() {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ password: PASSWORD });
     assert.equal(disable.status, 403);
-    assert.equal(disable.body.code, 'ADMIN_2FA_CODE_REQUIRED');
+    assert.equal(disable.body.code, 'ADMIN_ENROLLMENT_REQUIRED');
     assert.equal(
       (await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } })).enabled,
       true,
@@ -597,6 +638,30 @@ async function main() {
   });
 
   console.log('\nGestão de usuários');
+  await it('estudante mantém configuração, ativação, login e desativação de 2FA pelo app', async () => {
+    const student = await createUser();
+    const { accessToken } = await bearerLogin(student);
+    const setup = await http.post(`${API}/users/me/two-factor/setup`).set('Authorization', `Bearer ${accessToken}`);
+    assert.equal(setup.status, 201, JSON.stringify(setup.body));
+    const code = await generate({ secret: setup.body.secret });
+    const enabled = await http.post(`${API}/users/me/two-factor/enable`).set('Authorization', `Bearer ${accessToken}`).send({ code });
+    assert.equal(enabled.status, 201, JSON.stringify(enabled.body));
+    assert.equal(enabled.body.enabled, true);
+    await bearerLogin(student, code);
+    const disabled = await http.post(`${API}/users/me/two-factor/disable`).set('Authorization', `Bearer ${accessToken}`).send({ password: PASSWORD });
+    assert.equal(disabled.status, 201, JSON.stringify(disabled.body));
+    assert.equal(disabled.body.enabled, false);
+  });
+  await it('senha errada no app também bloqueia o login do painel para a mesma conta', async () => {
+    const admin = await createAdmin();
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const response = await http.post(`${API}/auth/login`).set('X-Forwarded-For', nextIp()).send({ email: admin.email, password: 'SenhaIncorreta123!' });
+      assert.equal(response.status, 401);
+    }
+    const blocked = await new Panel().post('/admin/auth/login', { body: { email: admin.email, password: PASSWORD } });
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.body.code, 'ADMIN_LOGIN_LOCKED');
+  });
   await it('listas e detalhes nunca trazem hash de senha nem CPF', async () => {
     const target = await createUser({ phone: '61999990000' });
     const responses = [
@@ -1261,7 +1326,17 @@ async function main() {
     );
   });
 
+  await it('auditoria pública do painel não expõe checkpoints internos de autenticação', async () => {
+    assert.ok(await prisma.auditLog.count({ where: { entityType: { in: ['AuthAttemptLimit', 'AuthCodeClaim'] } } }));
+    const response = await panel.get('/admin/audit-logs?limit=100');
+    assert.equal(response.status, 200);
+    assert.ok(response.body.every((entry) => !['AuthAttemptLimit', 'AuthCodeClaim'].includes(entry.entityType)));
+    assert.equal((await panel.get('/admin/audit-logs?entityType=AuthAttemptLimit')).body.length, 0);
+  });
+
   await app.close();
+  // A mesma guarda localhost/_test usada antes do TRUNCATE inicial protege o cleanup.
+  await prisma.$executeRawUnsafe('TRUNCATE users, roles, locations, audit_logs RESTART IDENTITY CASCADE');
   await prisma.$disconnect();
   console.log(`\n${results.passed} passaram, ${results.failed.length} falharam`);
   if (results.failed.length) {

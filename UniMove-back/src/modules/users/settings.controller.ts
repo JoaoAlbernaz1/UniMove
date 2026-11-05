@@ -9,7 +9,6 @@ import {
   Param,
   Patch,
   Post,
-  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
@@ -24,11 +23,7 @@ import { AllowIncompleteProfile } from '../../common/decorators/profile.decorato
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import { ProfileVisibility, RoleName } from '../../generated/prisma/enums';
-import {
-  decryptTwoFactorSecret,
-  encryptTwoFactorSecret,
-  isTwoFactorKeyConfigured,
-} from '../auth/two-factor-crypto';
+import { decryptTwoFactorSecret, encryptTwoFactorSecret } from '../auth/two-factor-crypto';
 
 class NotificationPreferencesDto {
   @IsOptional() @Transform(({ value }) => value) @IsBoolean() enabled?: boolean;
@@ -225,6 +220,7 @@ export class SettingsController {
   @AllowIncompleteProfile()
   @Post('two-factor/setup')
   async setupTwoFactor(@CurrentUser() user: AuthUser) {
+    await this.assertStudentTwoFactor(user.id);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       select: { institutionalEmail: true },
@@ -237,15 +233,6 @@ export class SettingsController {
     });
     if (current?.enabled)
       throw new ConflictException('A verificação em duas etapas já está ativa nesta conta.');
-    if (
-      user.roles.includes(RoleName.ADMIN) &&
-      process.env.NODE_ENV === 'production' &&
-      !isTwoFactorKeyConfigured()
-    )
-      throw new ServiceUnavailableException({
-        code: 'TWO_FACTOR_KEY_MISSING',
-        message: 'O segundo fator ainda não está configurado neste ambiente.',
-      });
     const secret = generateSecret();
     const encrypted = encryptTwoFactorSecret(secret);
     await this.prisma.twoFactorAuth.upsert({
@@ -264,6 +251,7 @@ export class SettingsController {
   @AllowIncompleteProfile()
   @Post('two-factor/enable')
   async enableTwoFactor(@CurrentUser() user: AuthUser, @Body() dto: EnableTwoFactorDto) {
+    await this.assertStudentTwoFactor(user.id);
     const auth = await this.prisma.twoFactorAuth.findUnique({ where: { userId: user.id } });
     if (!auth) throw new BadRequestException('Configure o segundo fator antes de ativá-lo.');
     if (
@@ -280,30 +268,31 @@ export class SettingsController {
   @AllowIncompleteProfile()
   @Post('two-factor/disable')
   async disableTwoFactor(@CurrentUser() user: AuthUser, @Body() dto: DisableTwoFactorDto) {
+    await this.assertStudentTwoFactor(user.id);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       select: { passwordHash: true },
     });
     if (!(await argon2.verify(account.passwordHash, dto.password)))
       throw new UnauthorizedException('Senha atual inválida.');
-    if (user.roles.includes(RoleName.ADMIN)) {
-      const auth = await this.prisma.twoFactorAuth.findUnique({ where: { userId: user.id } });
-      const valid =
-        auth?.enabled &&
-        dto.code &&
-        (await verify({ token: dto.code, secret: decryptTwoFactorSecret(auth.secret).secret }))
-          .valid;
-      if (auth?.enabled && !valid)
-        throw new ForbiddenException({
-          code: 'ADMIN_2FA_CODE_REQUIRED',
-          message: 'Administradores precisam informar o código do autenticador para desativar.',
-        });
-    }
     await this.prisma.twoFactorAuth.updateMany({
       where: { userId: user.id },
       data: { enabled: false, recoveryCodes: [] },
     });
     return { enabled: false };
+  }
+
+  private async assertStudentTwoFactor(userId: string) {
+    const account = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { roles: { select: { role: { select: { name: true } } } } },
+    });
+    if (account.roles.some((item) => item.role.name === RoleName.ADMIN))
+      throw new ForbiddenException({
+        code: 'ADMIN_ENROLLMENT_REQUIRED',
+        message:
+          'O segundo fator administrativo precisa ser gerenciado por um operador autorizado.',
+      });
   }
 
   @Post('data-export')

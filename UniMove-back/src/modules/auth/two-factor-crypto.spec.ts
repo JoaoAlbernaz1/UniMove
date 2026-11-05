@@ -43,4 +43,30 @@ describe('cifra do segredo 2FA', () => {
     delete process.env.TWO_FACTOR_ENCRYPTION_KEY;
     expect(isTwoFactorKeyConfigured()).toBe(false);
   });
+
+  it('não considera uma chave vazia ou curta adequada para provisionamento', () => {
+    process.env.TWO_FACTOR_ENCRYPTION_KEY = ' '.repeat(32);
+    expect(isTwoFactorKeyConfigured()).toBe(false);
+    process.env.TWO_FACTOR_ENCRYPTION_KEY = 'curta';
+    expect(isTwoFactorKeyConfigured()).toBe(false);
+  });
+
+  it('recusa nova escrita em produção sem chave dedicada mesmo com JWT configurado', () => {
+    const nodeEnv = process.env.NODE_ENV;
+    const refresh = process.env.AUTH_REFRESH_SECRET;
+    try {
+      process.env.NODE_ENV = 'production';
+      process.env.AUTH_REFRESH_SECRET = 'jwt-ficticio-que-nao-deve-ser-alterado';
+      delete process.env.TWO_FACTOR_ENCRYPTION_KEY;
+      expect(() => encryptTwoFactorSecret('NOVO')).toThrow();
+      expect(
+        decryptTwoFactorSecret(encryptWithSeed('ANTIGO', process.env.AUTH_REFRESH_SECRET)),
+      ).toEqual({ secret: 'ANTIGO', legacy: true });
+    } finally {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
+      if (refresh === undefined) delete process.env.AUTH_REFRESH_SECRET;
+      else process.env.AUTH_REFRESH_SECRET = refresh;
+    }
+  });
 });

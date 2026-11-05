@@ -1,7 +1,8 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 // Chave histórica: está no repositório público, logo não protege nada. Continua
-// aqui só para ler segredos já gravados com ela; escritas novas de administrador
+// aqui só para ler segredos já gravados com ela; escritas novas em produção
 // exigem TWO_FACTOR_ENCRYPTION_KEY (ver isTwoFactorKeyConfigured).
 const LEGACY_SEED = 'unimove-development-two-factor-key';
 
@@ -14,10 +15,15 @@ function currentSeed() {
 }
 
 export function isTwoFactorKeyConfigured() {
-  return Boolean(process.env.TWO_FACTOR_ENCRYPTION_KEY);
+  return (process.env.TWO_FACTOR_ENCRYPTION_KEY?.trim().length ?? 0) >= 32;
 }
 
 export function encryptTwoFactorSecret(secret: string) {
+  if (process.env.NODE_ENV === 'production' && !isTwoFactorKeyConfigured())
+    throw new ServiceUnavailableException({
+      code: 'TWO_FACTOR_KEY_MISSING',
+      message: 'O segundo fator ainda não está configurado neste ambiente.',
+    });
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', keyFrom(currentSeed()), iv);
   const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);

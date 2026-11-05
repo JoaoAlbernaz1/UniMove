@@ -1,8 +1,13 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
@@ -18,6 +23,8 @@ import { decryptTwoFactorSecret } from './two-factor-crypto';
 
 @Injectable()
 export class AuthService {
+  private dummyHash?: Promise<string>;
+
   registrationPolicy() {
     return {
       termsVersion: TERMS_VERSION,
@@ -81,26 +88,51 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, userAgent?: string) {
+    const email = dto.email.trim().toLowerCase();
+    const passwordLimitKey = `login:${email}`;
+    await this.limiter.assertAllowed(passwordLimitKey);
     const user = await this.prisma.user.findUnique({
-      where: { institutionalEmail: dto.email.toLowerCase() },
+      where: { institutionalEmail: email },
       include: { roles: { include: { role: true } }, twoFactor: true },
     });
-    if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
+    this.dummyHash ??= argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
+    const passwordMatches = await argon2.verify(
+      user?.passwordHash ?? (await this.dummyHash),
+      dto.password,
+    );
+    if (!user || !passwordMatches) {
+      await this.limiter.recordFailure(passwordLimitKey);
+      if (user?.roles.some((item) => item.role.name === RoleName.ADMIN))
+        await this.prisma.auditLog.create({
+          data: {
+            actorUserId: user.id,
+            action: 'ADMIN_LOGIN_FAILED',
+            entityType: 'User',
+            entityId: user.id,
+          },
+        });
       throw new UnauthorizedException('Credenciais inválidas.');
     }
     if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Conta indisponível para login.');
     }
+    await this.limiter.reset(passwordLimitKey);
+    if (user.roles.some((item) => item.role.name === RoleName.ADMIN) && !user.twoFactor?.enabled)
+      throw new ForbiddenException({
+        code: 'ADMIN_ENROLLMENT_REQUIRED',
+        message:
+          'O segundo fator administrativo precisa ser provisionado por um operador autorizado.',
+      });
     if (user.twoFactor?.enabled) {
       if (!dto.twoFactorCode) return { twoFactorRequired: true as const };
       // Sem isto, quem tem a senha testa códigos a 100 por minuto, e um Bearer com
       // segundo fator abre as rotas administrativas.
       const limitKey = `2fa:${user.id}`;
-      this.limiter.assertAllowed(limitKey);
+      await this.limiter.assertAllowed(limitKey);
       const { secret } = decryptTwoFactorSecret(user.twoFactor.secret);
       const result = await verify({ token: dto.twoFactorCode, secret, epochTolerance: 30 });
-      if (!result.valid || !this.limiter.claimCode(user.id, dto.twoFactorCode)) {
-        this.limiter.recordFailure(limitKey);
+      if (!result.valid || !(await this.limiter.claimCode(user.id, dto.twoFactorCode))) {
+        await this.limiter.recordFailure(limitKey);
         if (user.roles.some((item) => item.role.name === RoleName.ADMIN))
           await this.prisma.auditLog.create({
             data: {
@@ -112,7 +144,7 @@ export class AuthService {
           });
         throw new UnauthorizedException('Código de autenticação inválido.');
       }
-      this.limiter.reset(limitKey);
+      await this.limiter.reset(limitKey);
     }
     const tokens = await this.issueTokens(
       user.id,
@@ -140,7 +172,7 @@ export class AuthService {
     if (payload.type !== 'refresh') throw new UnauthorizedException('Refresh token inválido.');
     const session = await this.prisma.refreshSession.findUnique({
       where: { id: payload.sid },
-      include: { user: { include: { roles: { include: { role: true } } } } },
+      include: { user: { include: { roles: { include: { role: true } }, twoFactor: true } } },
     });
     if (
       !session ||
@@ -152,6 +184,19 @@ export class AuthService {
     }
     if (session.user.status !== UserStatus.ACTIVE)
       throw new UnauthorizedException('Conta indisponível para login.');
+    if (
+      session.user.roles.some((item) => item.role.name === RoleName.ADMIN) &&
+      (!session.user.twoFactor?.enabled || payload.mfa !== true)
+    ) {
+      await this.prisma.refreshSession.updateMany({
+        where: { familyId: session.familyId, userId: session.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException({
+        code: 'ADMIN_2FA_REQUIRED',
+        message: 'Entre novamente com o segundo fator para acessar esta conta administrativa.',
+      });
+    }
     return this.issueTokens(
       session.userId,
       session.user.roles.map((item) => item.role.name),

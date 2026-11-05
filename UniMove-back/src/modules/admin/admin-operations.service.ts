@@ -10,6 +10,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import { IncidentStatus, NotificationType } from '../../generated/prisma/enums';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { NotificationService } from '../notifications/notifications.service';
+import { AUTH_STATE_ENTITY_TYPES } from '../auth/auth-attempt-limiter';
 import {
   AdminAuditQueryDto,
   AdminIncidentsQueryDto,
@@ -279,7 +280,11 @@ export class AdminOperationsService {
 
   async auditLogs(query: AdminAuditQueryDto) {
     const where: Prisma.AuditLogWhereInput = {
-      ...(query.entityType ? { entityType: query.entityType } : {}),
+      // Checkpoints internos são mutáveis e não são eventos da auditoria administrativa.
+      AND: [
+        { entityType: { notIn: [...AUTH_STATE_ENTITY_TYPES] } },
+        ...(query.entityType ? [{ entityType: query.entityType }] : []),
+      ],
       ...(query.actorUserId ? { actorUserId: query.actorUserId } : {}),
       ...(query.from || query.to
         ? {

@@ -22,7 +22,11 @@ export function validAdminWhere(excludeUserId?: string): Prisma.UserWhereInput {
   };
 }
 
-/** Chamar dentro da transação que vai retirar o acesso de `userId`. */
+/**
+ * Chamar dentro da transação que vai retirar o acesso de `userId`.
+ * O chamador deve adquirir lockAdminInvariant antes de suas próprias leituras de
+ * status/papéis e locks de linha. Reentrar neste lock na mesma transação é seguro.
+ */
 export async function assertNotLastAdmin(tx: Prisma.TransactionClient, userId: string) {
   await lockAdminInvariant(tx);
   const user = await tx.user.findUnique({
@@ -30,6 +34,22 @@ export async function assertNotLastAdmin(tx: Prisma.TransactionClient, userId: s
     select: { roles: { select: { role: { select: { name: true } } } } },
   });
   if (!user?.roles.some((item) => item.role.name === RoleName.ADMIN)) return;
+  // Serializable fixa o snapshot no SELECT do advisory lock, antes de uma eventual
+  // espera. Bloquear os candidatos força conflito se status, papel ou MFA mudaram
+  // desde esse snapshot; contar sem isso poderia considerar um admin já suspenso.
+  await tx.$executeRaw`
+    SELECT u.id
+    FROM users AS u
+    JOIN user_roles AS ur ON ur.user_id = u.id
+    JOIN roles AS r ON r.id = ur.role_id
+    JOIN two_factor_auth AS tfa ON tfa.user_id = u.id
+    WHERE u.id <> ${userId}::uuid
+      AND u.status = ${UserStatus.ACTIVE}::"UserStatus"
+      AND u.deleted_at IS NULL
+      AND r.name = ${RoleName.ADMIN}::"RoleName"
+      AND tfa.enabled = true
+    ORDER BY u.id
+    FOR SHARE OF u, ur, tfa`;
   if (!(await tx.user.count({ where: validAdminWhere(userId) })))
     throw new ConflictException({
       code: 'LAST_ADMIN',

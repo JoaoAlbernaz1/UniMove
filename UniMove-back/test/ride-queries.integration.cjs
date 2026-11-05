@@ -1,5 +1,17 @@
 // Executar após npm run build. Todos os cadastros são revertidos no PostgreSQL.
 require('dotenv/config');
+const target = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid');
+if (!['127.0.0.1', 'localhost'].includes(target.hostname) || !target.pathname.endsWith('_test') || process.env.NODE_ENV === 'production') {
+  console.error('Recusado: integração de estudantes exige banco local com sufixo _test.');
+  process.exit(2);
+}
+process.env.JWT_ACCESS_SECRET ??= 'student-integration-access-secret-0123456789';
+process.env.JWT_REFRESH_SECRET ??= 'student-integration-refresh-secret-0123456789';
+process.env.TWO_FACTOR_ENCRYPTION_KEY ??= 'student-integration-factor-key-0123456789';
+process.env.ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS ??= 'ucb.edu.br';
+// Testes locais nunca entregam mensagens por transportes configurados no ambiente.
+process.env.SMTP_HOST = '';
+process.env.TWILIO_ACCOUNT_SID = '';
 const assert = require('node:assert/strict');
 const { randomUUID, randomInt } = require('node:crypto');
 const { Test } = require('@nestjs/testing');
@@ -122,9 +134,11 @@ async function verifyHttp(tx, driverId, filters) {
     location: tx.location,
     vehicle: tx.vehicle,
     driverLicense: tx.driverLicense,
+    twoFactorAuth: tx.twoFactorAuth,
     refreshSession: tx.refreshSession,
     auditLog: tx.auditLog,
     $queryRaw: tx.$queryRaw.bind(tx),
+    $executeRaw: tx.$executeRaw.bind(tx),
     $transaction: (callback) =>
       typeof callback === 'function' ? callback(tx) : Promise.all(callback),
   };
@@ -175,6 +189,13 @@ async function verifyHttp(tx, driverId, filters) {
     assert.equal(editedReloaded.body.semester, 4);
     assert.equal(editedReloaded.body.bio, 'Perfil editado e persistido.');
     console.log('PASS: perfil obrigatório, mínimo de três tags distintas, persistência e bloqueio pelo backend.');
+    const verificationRequired = await http.get('/api/v1/rides').set('Authorization', authorization).expect(403);
+    assert.equal(verificationRequired.body.code, 'ACADEMIC_VERIFICATION_REQUIRED', 'editar curso invalida o vínculo anterior');
+    await tx.academicVerification.upsert({
+      where: { userId: driverId },
+      create: { userId: driverId, reportGuid: randomUUID(), status: 'APPROVED', reviewedAt: new Date() },
+      update: { status: 'APPROVED', reviewedAt: new Date() },
+    });
     const page = await http
       .get('/api/v1/rides')
       .set('Authorization', authorization)
@@ -290,13 +311,15 @@ async function verifyHttp(tx, driverId, filters) {
       timezone: 'America/Sao_Paulo', availableSeats: 6, pricePerPersonCents: 0,
       acceptsLuggage: true, allowsMusic: false, acceptsPets: false,
     };
-    await http.post('/api/v1/rides').set('Authorization', passengerAuthorization)
-      .send(newRide).expect(403);
+    // A autorização consulta os papéis atuais no banco: a promoção vale também
+    // para o token anterior, sem confiar nas roles antigas assinadas no JWT.
+    const published = await http.post('/api/v1/rides').set('Authorization', passengerAuthorization)
+      .send(newRide).expect(201);
     const refreshed = await http.post('/api/v1/auth/refresh')
       .send({ refreshToken: login.body.refreshToken }).expect(200);
     const driverAuthorization = 'Bearer ' + refreshed.body.accessToken;
-    const published = await http.post('/api/v1/rides').set('Authorization', driverAuthorization)
-      .send(newRide).expect(201);
+    const refreshedProfile = await http.get('/api/v1/users/me').set('Authorization', driverAuthorization).expect(200);
+    assert.ok(refreshedProfile.body.roles.some((entry) => entry.role.name === 'DRIVER'));
     assert.equal(published.body.availableSeats, 6);
     const results = await http.get('/api/v1/rides').set('Authorization', driverAuthorization)
       .query({ date: '29/11/2099', time: '12:00', timezone: 'America/Sao_Paulo', limit: 100 }).expect(200);
@@ -380,6 +403,14 @@ async function run() {
         assert.ok(savedUser.termsAcceptedAt instanceof Date);
         assert.equal(savedUser.termsVersion, TERMS_VERSION);
         assert.equal(savedUser.privacyPolicyVersion, PRIVACY_POLICY_VERSION);
+        // Desde 01/11 a busca só exibe caronas de motoristas academicamente aprovados.
+        // O estado faz parte da fixture, sem relaxar a regra de produção.
+        await tx.academicVerification.create({ data: {
+          userId: driver.id,
+          reportGuid: randomUUID(),
+          status: 'APPROVED',
+          reviewedAt: new Date(),
+        } });
 
         const vehicle = await tx.vehicle.create({
           data: {

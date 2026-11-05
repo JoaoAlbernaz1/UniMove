@@ -6,6 +6,10 @@ import { Roles } from './auth.decorators';
 import { AllowIncompleteProfile } from './profile.decorators';
 
 export const ADMIN_SESSION_ALLOWED = 'adminSessionAllowed';
+export const ADMIN_APP_ALLOWED = 'adminAppAllowed';
+
+/** Compatibilidade explícita com a revisão acadêmica existente no aplicativo. */
+export const AllowAdminApp = () => SetMetadata(ADMIN_APP_ALLOWED, true);
 
 /** Só estas rotas aceitam o cookie de sessão do painel; as demais seguem em Bearer. */
 export const AllowAdminSession = () => SetMetadata(ADMIN_SESSION_ALLOWED, true);

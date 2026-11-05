@@ -28,9 +28,7 @@ export class NotificationService {
   private inQuietHours(start: string, end: string) {
     const now = new Date();
     const current = `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}`;
-    return start <= end
-      ? current >= start && current < end
-      : current >= start || current < end;
+    return start <= end ? current >= start && current < end : current >= start || current < end;
   }
 
   private async isAllowed(input: CreateNotificationInput, client: Prisma.TransactionClient) {
@@ -72,7 +70,11 @@ export class NotificationService {
       categoryAllowed = preference.safety;
     if (!categoryAllowed) return false;
 
-    if (preference.push) await this.sendPush(user.pushDevices.map((device) => device.token), input);
+    if (preference.push)
+      await this.sendPush(
+        user.pushDevices.map((device) => device.token),
+        input,
+      );
     if (preference.email) await this.sendEmail(user.institutionalEmail, input);
     if (preference.sms && user.phone) await this.sendSms(user.phone, input);
     return true;
@@ -112,10 +114,18 @@ export class NotificationService {
   }
 
   private async sendSms(phone: string, input: CreateNotificationInput) {
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM)
+    if (
+      !process.env.TWILIO_ACCOUNT_SID ||
+      !process.env.TWILIO_AUTH_TOKEN ||
+      !process.env.TWILIO_FROM
+    )
       return;
     const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    await client.messages.create({ to: phone, from: process.env.TWILIO_FROM, body: `${input.title}: ${input.message}` });
+    await client.messages.create({
+      to: phone,
+      from: process.env.TWILIO_FROM,
+      body: `${input.title}: ${input.message}`,
+    });
   }
 
   async create(input: CreateNotificationInput, client: Prisma.TransactionClient = this.prisma) {
@@ -123,7 +133,10 @@ export class NotificationService {
     return client.notification.create({ data: input });
   }
 
-  async createMany(inputs: CreateNotificationInput[], client: Prisma.TransactionClient = this.prisma) {
+  async createMany(
+    inputs: CreateNotificationInput[],
+    client: Prisma.TransactionClient = this.prisma,
+  ) {
     if (!inputs.length) return Promise.resolve({ count: 0 });
     const allowed: CreateNotificationInput[] = [];
     for (const input of inputs) {

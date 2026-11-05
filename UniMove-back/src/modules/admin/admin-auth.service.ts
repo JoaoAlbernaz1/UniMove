@@ -1,17 +1,9 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { generateSecret, generateURI, verify } from 'otplib';
-import QRCode from 'qrcode';
+import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { AuthAttemptLimiter } from '../auth/auth-attempt-limiter';
@@ -23,13 +15,12 @@ import {
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 const ACCESS_TTL_SECONDS = 15 * 60;
-const RECOVERY_CODE_COUNT = 8;
 // Dois pedidos de refresh legítimos (duas abas) podem disputar o mesmo token.
 const REFRESH_RACE_GRACE_MS = 30 * 1000;
 const INVALID_CREDENTIALS = 'Credenciais inválidas.';
 const INVALID_CODE = 'Código de autenticação inválido.';
 
-type ChallengeStage = 'verify' | 'enroll';
+type ChallengeStage = 'verify';
 interface ChallengePayload {
   sub: string;
   type: 'admin_challenge';
@@ -64,7 +55,6 @@ function normalizeRecoveryCode(code: string) {
 
 @Injectable()
 export class AdminAuthService {
-  private readonly logger = new Logger(AdminAuthService.name);
   private dummyHash?: Promise<string>;
 
   constructor(
@@ -77,7 +67,7 @@ export class AdminAuthService {
   async login(emailInput: string, password: string) {
     const email = emailInput.trim().toLowerCase();
     const limitKey = `login:${email}`;
-    this.limiter.assertAllowed(limitKey);
+    await this.limiter.assertAllowed(limitKey);
 
     const account = await this.prisma.user.findUnique({
       where: { institutionalEmail: email },
@@ -90,7 +80,7 @@ export class AdminAuthService {
       password,
     );
     if (!account || !passwordMatches) {
-      this.limiter.recordFailure(limitKey);
+      await this.limiter.recordFailure(limitKey);
       if (account && isAdmin(account)) await this.audit('ADMIN_LOGIN_FAILED', account.id);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
@@ -103,7 +93,7 @@ export class AdminAuthService {
         message: 'Esta conta não tem acesso ao painel administrativo.',
       });
     }
-    this.limiter.reset(limitKey);
+    await this.limiter.reset(limitKey);
 
     if (account.twoFactor?.enabled)
       return {
@@ -111,11 +101,11 @@ export class AdminAuthService {
         challenge: await this.signChallenge(account.id, 'verify'),
       };
 
-    return {
-      step: 'ENROLL' as const,
-      challenge: await this.signChallenge(account.id, 'enroll'),
-      enrollment: await this.startEnrollment(account.id, account.institutionalEmail),
-    };
+    throw new ForbiddenException({
+      code: 'ADMIN_ENROLLMENT_REQUIRED',
+      message:
+        'O segundo fator administrativo precisa ser provisionado por um operador autorizado.',
+    });
   }
 
   async verifySecondFactor(
@@ -125,7 +115,7 @@ export class AdminAuthService {
   ) {
     const challenge = await this.readChallenge(challengeToken);
     const limitKey = `2fa:${challenge.sub}`;
-    this.limiter.assertAllowed(limitKey);
+    await this.limiter.assertAllowed(limitKey);
 
     const account = await this.prisma.user.findUnique({
       where: { id: challenge.sub },
@@ -134,39 +124,35 @@ export class AdminAuthService {
     if (!account || account.status !== UserStatus.ACTIVE || account.deletedAt || !isAdmin(account))
       throw new UnauthorizedException('Sessão de login inválida. Entre novamente.');
     const factor = account.twoFactor;
-    // O estágio assinado precisa continuar valendo: quem começou um cadastro não
-    // pode concluí-lo depois que a conta já ativou outro autenticador.
-    if (!factor || factor.enabled !== (challenge.stage === 'verify'))
+    // Challenges antigos de enrollment já foram recusados em readChallenge.
+    // HTTP só verifica fatores previamente provisionados por operador.
+    if (!factor?.enabled)
       throw new UnauthorizedException('Sessão de login inválida. Entre novamente.');
 
     const code = codeInput.trim();
     const isTotp = /^\d{6}$/.test(code);
     let recoveryCodesLeft: string[] | undefined;
-    let valid = false;
+    let valid: boolean;
     if (isTotp) {
       const { secret, legacy } = decryptTwoFactorSecret(factor.secret);
       const result = await verify({ token: code, secret, epochTolerance: 30 });
-      valid = result.valid && this.limiter.claimCode(account.id, code);
-      if (valid && legacy && challenge.stage === 'verify' && isTwoFactorKeyConfigured())
+      valid = result.valid && (await this.limiter.claimCode(account.id, code));
+      if (valid && legacy && isTwoFactorKeyConfigured())
         await this.prisma.twoFactorAuth.update({
           where: { userId: account.id },
           data: { secret: encryptTwoFactorSecret(secret) },
         });
-    } else if (challenge.stage === 'verify') {
+    } else {
       recoveryCodesLeft = await this.consumeRecoveryCode(account.id, factor.recoveryCodes, code);
       valid = recoveryCodesLeft !== undefined;
     }
     if (!valid) {
-      this.limiter.recordFailure(limitKey);
+      await this.limiter.recordFailure(limitKey);
       await this.audit('ADMIN_2FA_FAILED', account.id);
       throw new UnauthorizedException(INVALID_CODE);
     }
-    this.limiter.reset(limitKey);
+    await this.limiter.reset(limitKey);
 
-    const recoveryCodes =
-      challenge.stage === 'enroll'
-        ? await this.completeEnrollment(account.id, factor.secret)
-        : undefined;
     if (recoveryCodesLeft !== undefined)
       await this.audit('ADMIN_RECOVERY_CODE_USED', account.id, {
         remaining: recoveryCodesLeft.length,
@@ -178,10 +164,8 @@ export class AdminAuthService {
       user: this.toSessionUser({
         ...account,
         twoFactorEnabled: true,
-        recoveryCodesRemaining:
-          recoveryCodes?.length ?? recoveryCodesLeft?.length ?? factor.recoveryCodes.length,
+        recoveryCodesRemaining: recoveryCodesLeft?.length ?? factor.recoveryCodes.length,
       }),
-      ...(recoveryCodes ? { recoveryCodes } : {}),
       ...(recoveryCodesLeft !== undefined
         ? { recoveryCodesRemaining: recoveryCodesLeft.length }
         : {}),
@@ -195,6 +179,7 @@ export class AdminAuthService {
     if (
       !session ||
       session.userId !== payload.sub ||
+      session.expiresAt <= new Date() ||
       !(await argon2.verify(session.tokenHash, rawToken!))
     )
       throw new UnauthorizedException('Sessão administrativa expirada.');
@@ -285,72 +270,6 @@ export class AdminAuthService {
         ? {}
         : { recoveryCodesRemaining: account.recoveryCodesRemaining }),
     };
-  }
-
-  private async startEnrollment(userId: string, email: string) {
-    // A chave histórica está no repositório público: segredo novo de admin não usa.
-    if (process.env.NODE_ENV === 'production' && !isTwoFactorKeyConfigured()) {
-      this.logger.error(
-        'TWO_FACTOR_ENCRYPTION_KEY ausente: cadastro de 2FA administrativo recusado.',
-      );
-      throw new ServiceUnavailableException({
-        code: 'TWO_FACTOR_KEY_MISSING',
-        message: 'O segundo fator ainda não está configurado neste ambiente.',
-      });
-    }
-    const secret = generateSecret();
-    const encrypted = encryptTwoFactorSecret(secret);
-    // Condicional: outro login em paralelo não pode desativar um fator recém-ativado.
-    const { count } = await this.prisma.twoFactorAuth.updateMany({
-      where: { userId, enabled: false },
-      data: { secret: encrypted, recoveryCodes: [] },
-    });
-    if (!count) {
-      const existing = await this.prisma.twoFactorAuth.findUnique({
-        where: { userId },
-        select: { enabled: true },
-      });
-      if (existing?.enabled)
-        throw new ConflictException({
-          code: 'TWO_FACTOR_ALREADY_ENABLED',
-          message: 'O segundo fator já foi ativado nesta conta. Entre novamente.',
-        });
-      await this.prisma.twoFactorAuth.create({
-        data: { userId, secret: encrypted, enabled: false },
-      });
-    }
-    const uri = generateURI({ secret, label: email, issuer: 'UniCarona Admin' });
-    return { secret, qrCode: await QRCode.toDataURL(uri), issuer: 'UniCarona Admin' };
-  }
-
-  private async completeEnrollment(userId: string, verifiedSecret: string) {
-    const recoveryCodes = Array.from({ length: RECOVERY_CODE_COUNT }, () => {
-      const raw = randomBytes(5).toString('hex').toUpperCase();
-      return `${raw.slice(0, 5)}-${raw.slice(5)}`;
-    });
-    const hashes = await Promise.all(
-      recoveryCodes.map((code) =>
-        argon2.hash(normalizeRecoveryCode(code), { type: argon2.argon2id }),
-      ),
-    );
-    await this.prisma.$transaction(async (tx) => {
-      // Ativa exatamente o segredo conferido. Se outro login trocou o segredo no meio
-      // do caminho, nada é ativado.
-      const { count } = await tx.twoFactorAuth.updateMany({
-        where: { userId, enabled: false, secret: verifiedSecret },
-        data: { enabled: true, recoveryCodes: hashes },
-      });
-      if (!count) throw new UnauthorizedException('Sessão de login inválida. Entre novamente.');
-      await tx.auditLog.create({
-        data: {
-          actorUserId: userId,
-          action: 'ADMIN_2FA_ENROLLED',
-          entityType: 'User',
-          entityId: userId,
-        },
-      });
-    });
-    return recoveryCodes;
   }
 
   /** Retorna os códigos restantes, ou undefined se o código não valer. */
@@ -445,7 +364,7 @@ export class AdminAuthService {
     } catch {
       payload = undefined;
     }
-    if (payload?.type !== 'admin_challenge')
+    if (payload?.type !== 'admin_challenge' || payload.stage !== 'verify')
       throw new UnauthorizedException('Sessão de login expirada. Entre novamente.');
     return payload;
   }

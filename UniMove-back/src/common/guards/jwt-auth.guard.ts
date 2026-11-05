@@ -1,17 +1,23 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY, AuthUser } from '../decorators/auth.decorators';
-import { ADMIN_SESSION_ALLOWED } from '../decorators/admin.decorators';
+import { ADMIN_APP_ALLOWED, ADMIN_SESSION_ALLOWED } from '../decorators/admin.decorators';
 import {
   adminCookieNames,
   assertAdminCsrf,
   assertAdminOrigin,
   isUnsafeMethod,
 } from '../security/admin-session';
-import { UserStatus } from '../../generated/prisma/enums';
+import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
 
 interface AccessPayload {
@@ -44,15 +50,15 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { user: AuthUser }>();
+    const adminRoute = this.reflector.getAllAndOverride<boolean>(ADMIN_SESSION_ALLOWED, targets);
     const [type, bearer] = request.headers.authorization?.split(' ') ?? [];
     const bearerToken = type === 'Bearer' ? bearer : undefined;
     const cookieToken =
-      !bearerToken && this.reflector.getAllAndOverride<boolean>(ADMIN_SESSION_ALLOWED, targets)
+      !bearerToken && adminRoute
         ? (request.cookies as Record<string, string> | undefined)?.[adminCookieNames().access]
         : undefined;
     const token = bearerToken ?? cookieToken;
     if (!token) throw new UnauthorizedException('Token de acesso ausente.');
-
     let payload: AccessPayload;
     try {
       payload = await this.jwt.verifyAsync<AccessPayload>(token, {
@@ -63,8 +69,22 @@ export class JwtAuthGuard implements CanActivate {
     }
     // Token de sessão do painel só circula em cookie, e o cookie só carrega esse token.
     const adminSession = payload.scope === 'admin';
-    if (payload.type !== 'access' || adminSession !== Boolean(cookieToken))
+    if (
+      payload.type !== 'access' ||
+      adminSession !== Boolean(cookieToken) ||
+      (adminSession && !payload.sid)
+    )
       throw new UnauthorizedException(REJECTED);
+
+    if (
+      bearerToken &&
+      adminRoute &&
+      !this.reflector.getAllAndOverride<boolean>(ADMIN_APP_ALLOWED, targets)
+    )
+      throw new ForbiddenException({
+        code: 'ADMIN_COOKIE_SESSION_REQUIRED',
+        message: 'Esta ferramenta exige uma sessão do painel administrativo.',
+      });
 
     if (cookieToken && isUnsafeMethod(request.method)) {
       assertAdminOrigin(request, this.config.get<string[]>('admin.origins'));
@@ -94,6 +114,16 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Conta indisponível para acesso.');
     if (adminSession && !account.refreshSessions?.length)
       throw new UnauthorizedException('Sessão administrativa encerrada.');
+    if (
+      adminRoute &&
+      (!account.roles.some((item) => item.role.name === RoleName.ADMIN) ||
+        payload.mfa !== true ||
+        account.twoFactor?.enabled !== true)
+    )
+      throw new ForbiddenException({
+        code: 'ADMIN_2FA_REQUIRED',
+        message: 'O acesso administrativo exige perfil ADMIN atual e segundo fator confirmado.',
+      });
 
     request.user = {
       id: payload.sub,

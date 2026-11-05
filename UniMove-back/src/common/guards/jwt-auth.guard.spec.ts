@@ -1,10 +1,18 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  RequestMethod,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import type { ConfigService } from '@nestjs/config';
-import type { JwtService } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import type { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { IS_PUBLIC_KEY } from '../decorators/auth.decorators';
+import { ADMIN_APP_ALLOWED, ADMIN_SESSION_ALLOWED } from '../decorators/admin.decorators';
+import { adminCookieNames } from '../security/admin-session';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 describe('JwtAuthGuard', () => {
@@ -12,11 +20,17 @@ describe('JwtAuthGuard', () => {
   const verifyAsync = jest.fn();
   const getOrThrow = jest.fn().mockReturnValue('secret');
   const findUnique = jest.fn();
-  const request = { headers: { authorization: 'Bearer access-token' } };
+  const request: {
+    headers: { authorization?: string };
+    cookies?: Record<string, string>;
+    method: string;
+  } = { headers: { authorization: 'Bearer access-token' }, method: 'GET' };
+  class Controller {}
+  const handler = () => {};
   const context = {
     getType: () => 'http',
-    getHandler: () => () => {},
-    getClass: () => class {},
+    getHandler: () => handler,
+    getClass: () => Controller,
     switchToHttp: () => ({ getRequest: () => request }),
   } as unknown as ExecutionContext;
   const guard = new JwtAuthGuard(
@@ -28,6 +42,11 @@ describe('JwtAuthGuard', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    request.headers.authorization = 'Bearer access-token';
+    delete request.cookies;
+    Reflect.defineMetadata(PATH_METADATA, 'users/me', Controller);
+    Reflect.defineMetadata(PATH_METADATA, '', handler);
+    Reflect.defineMetadata(METHOD_METADATA, RequestMethod.GET, handler);
     getAllAndOverride.mockReturnValue(false);
     verifyAsync.mockResolvedValue({
       sub: 'user-id',
@@ -87,5 +106,91 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(findUnique).not.toHaveBeenCalled();
     expect(verifyAsync).not.toHaveBeenCalled();
+  });
+
+  const adminRoute = (path: string) => {
+    getAllAndOverride.mockImplementation(
+      (key: string) =>
+        key === ADMIN_SESSION_ALLOWED ||
+        (key === ADMIN_APP_ALLOWED && Reflect.getMetadata(ADMIN_APP_ALLOWED, handler) === true),
+    );
+    Reflect.defineMetadata(ADMIN_APP_ALLOWED, path === 'admin/academic-verifications', handler);
+    Reflect.defineMetadata(PATH_METADATA, path, Controller);
+    verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', mfa: true });
+    findUnique.mockResolvedValue({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: { name: RoleName.ADMIN } }],
+      twoFactor: { enabled: true },
+      refreshSessions: [{ id: 'sid' }],
+    });
+  };
+
+  it('recusa Bearer do app nas ferramentas do painel mesmo com ADMIN e MFA', async () => {
+    adminRoute('admin');
+    Reflect.defineMetadata(PATH_METADATA, 'users', handler);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it.each([
+    ['assinatura inválida', { sub: 'user-id', type: 'access', mfa: true }, 'wrong-secret'],
+    [
+      'token do painel copiado como Bearer',
+      { sub: 'user-id', type: 'access', scope: 'admin', sid: 'sid', mfa: true },
+      'secret',
+    ],
+  ])(
+    'retorna 401 antes da política Bearer para %s em rota do painel',
+    async (_name, payload, secret) => {
+      adminRoute('admin');
+      const jwt = new JwtService();
+      request.headers.authorization = `Bearer ${await jwt.signAsync(payload, { secret })}`;
+      const authenticatingGuard = new JwtAuthGuard(
+        { getAllAndOverride } as unknown as Reflector,
+        jwt,
+        { getOrThrow } as unknown as ConfigService,
+        { user: { findUnique } } as unknown as PrismaService,
+      );
+      await expect(authenticatingGuard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(findUnique).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserva Bearer com ADMIN e MFA somente nas rotas acadêmicas já usadas pelo app', async () => {
+    adminRoute('admin/academic-verifications');
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    Reflect.defineMetadata(PATH_METADATA, ':userId', handler);
+    Reflect.defineMetadata(METHOD_METADATA, RequestMethod.PATCH, handler);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    Reflect.defineMetadata(PATH_METADATA, 'new-tool', handler);
+    Reflect.defineMetadata(ADMIN_APP_ALLOWED, false, handler);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it.each(['role', 'mfa'])('recusa Bearer acadêmico após revogar %s no banco', async (revoked) => {
+    adminRoute('admin/academic-verifications');
+    findUnique.mockResolvedValue({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: { name: revoked === 'role' ? RoleName.PASSENGER : RoleName.ADMIN } }],
+      twoFactor: { enabled: revoked !== 'mfa' },
+    });
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('aceita cookie administrativo com sessão ativa nas ferramentas do painel', async () => {
+    adminRoute('admin');
+    delete request.headers.authorization;
+    request.cookies = { [adminCookieNames().access]: 'cookie-token' };
+    verifyAsync.mockResolvedValue({
+      sub: 'user-id',
+      type: 'access',
+      mfa: true,
+      scope: 'admin',
+      sid: 'sid',
+    });
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', mfa: true, scope: 'admin' });
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

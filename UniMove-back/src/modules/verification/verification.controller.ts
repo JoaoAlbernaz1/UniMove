@@ -18,7 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request, Response } from 'express';
-import { AdminRoute } from '../../common/decorators/admin.decorators';
+import { AdminRoute, AllowAdminApp } from '../../common/decorators/admin.decorators';
 import { AllowIncompleteProfile } from '../../common/decorators/profile.decorators';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
@@ -77,6 +77,7 @@ export class AdminVerificationController {
 
   // Sem `status`, lista as pendentes: é o contrato que o app móvel já usa. O total
   // vai no cabeçalho para o corpo continuar sendo um array.
+  @AllowAdminApp()
   @Get()
   async list(
     @Query() query: ListAcademicVerificationsDto,
@@ -91,6 +92,7 @@ export class AdminVerificationController {
     return items;
   }
 
+  @AllowAdminApp()
   @Patch(':userId')
   review(
     @CurrentUser() actor: AuthUser,

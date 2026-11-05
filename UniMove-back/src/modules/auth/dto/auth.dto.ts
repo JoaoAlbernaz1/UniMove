@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { Equals, IsEmail, IsOptional, IsString, IsStrongPassword, Length, MinLength } from 'class-validator';
+import {
+  Equals,
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsStrongPassword,
+  Length,
+  MinLength,
+} from 'class-validator';
 import { MatchesProperty } from '../../../common/validators/matches-property';
 import {
   PASSWORD_ERROR,
