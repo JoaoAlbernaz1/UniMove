@@ -14,3 +14,24 @@ export async function heldSeats(tx: Prisma.TransactionClient, rideId: string, no
   });
   return pending._sum.seatsRequested ?? 0;
 }
+
+// Mesma regra para uma lista de caronas, em uma consulta só. O painel
+// administrativo mostra as listas paginadas e precisa do mesmo número que o
+// estudante vê no aplicativo; sem isto o admin veria a vaga que já está retida.
+export async function heldSeatsByRide(
+  tx: Prisma.TransactionClient,
+  rideIds: string[],
+  now: Date,
+): Promise<Map<string, number>> {
+  if (!rideIds.length) return new Map();
+  const pending = await tx.rideRequest.groupBy({
+    by: ['rideId'],
+    where: { rideId: { in: rideIds }, status: 'PENDING', expiresAt: { gt: now } },
+    _sum: { seatsRequested: true },
+  });
+  return new Map(pending.map((row) => [row.rideId, row._sum.seatsRequested ?? 0]));
+}
+
+/** Vagas que o aplicativo anuncia: as livres menos as retidas por solicitação pendente. */
+export const seatsOnOffer = (availableSeats: number, held = 0) =>
+  Math.max(0, availableSeats - held);

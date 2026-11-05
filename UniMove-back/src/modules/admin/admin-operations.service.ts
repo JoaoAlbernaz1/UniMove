@@ -11,6 +11,7 @@ import { IncidentStatus, NotificationType } from '../../generated/prisma/enums';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { NotificationService } from '../notifications/notifications.service';
 import { AUTH_STATE_ENTITY_TYPES } from '../auth/auth-attempt-limiter';
+import { heldSeats, heldSeatsByRide, seatsOnOffer } from '../rides/ride-availability';
 import {
   AdminAuditQueryDto,
   AdminIncidentsQueryDto,
@@ -87,8 +88,18 @@ export class AdminOperationsService {
       this.prisma.ride.count({ where }),
       this.prisma.ride.groupBy({ by: ['status'], _count: { _all: true } }),
     ]);
+    // O painel anuncia a mesma vaga que o estudante vê: solicitação pendente
+    // segura o assento até expirar, e o app já desconta isso.
+    const retidos = await heldSeatsByRide(
+      this.prisma,
+      items.map((ride) => ride.id),
+      new Date(),
+    );
     return {
-      items,
+      items: items.map((ride) => ({
+        ...ride,
+        availableSeats: seatsOnOffer(ride.availableSeats, retidos.get(ride.id)),
+      })),
       total,
       statusCounts: Object.fromEntries(byStatus.map((row) => [row.status, row._count._all])),
     };
@@ -138,7 +149,11 @@ export class AdminOperationsService {
       },
     });
     if (!ride) throw new NotFoundException('Carona não encontrada.');
-    return { ...ride, vehicle: { ...ride.vehicle, plate: maskPlate(ride.vehicle.plate) } };
+    return {
+      ...ride,
+      availableSeats: seatsOnOffer(ride.availableSeats, await heldSeats(this.prisma, ride.id, new Date())),
+      vehicle: { ...ride.vehicle, plate: maskPlate(ride.vehicle.plate) },
+    };
   }
 
   async incidents(query: AdminIncidentsQueryDto) {

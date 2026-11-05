@@ -12,6 +12,7 @@ import {
 } from '../../generated/prisma/enums';
 import type { ReportType } from './admin.dto';
 import { toCsv } from './csv';
+import { heldSeatsByRide, seatsOnOffer } from '../rides/ride-availability';
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const EXPORT_LIMIT = 5000;
@@ -267,6 +268,12 @@ export class AdminInsightsService {
           orderBy: { departureAt: 'desc' },
           take,
         });
+        // Mesma regra do aplicativo: solicitação pendente segura o assento.
+        const retidos = await heldSeatsByRide(
+          this.prisma,
+          rides.map((ride) => ride.id),
+          new Date(),
+        );
         return {
           headers: [
             'id',
@@ -286,7 +293,7 @@ export class AdminInsightsService {
             ride.destinationLocation.name,
             ride.departureAt.toISOString(),
             ride.totalSeats,
-            ride.availableSeats,
+            seatsOnOffer(ride.availableSeats, retidos.get(ride.id)),
             formatCents(ride.pricePerPersonCents),
             ride.status,
           ]),
