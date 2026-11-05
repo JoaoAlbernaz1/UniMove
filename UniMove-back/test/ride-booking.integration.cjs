@@ -66,6 +66,13 @@ async function check(tx) {
             institutionalEmail: `${id}@example.test`,
             passwordHash: 'integration-only',
             profileCompletedAt: new Date(),
+            // O papel precisa existir no banco: desde o módulo administrativo o
+            // guard lê o papel atual da conta, e não o que veio dentro do token.
+            roles: {
+              create: (i === 0 ? ['DRIVER', 'PASSENGER'] : ['PASSENGER']).map((name) => ({
+                role: { connect: { name } },
+              })),
+            },
           },
         }),
       );
