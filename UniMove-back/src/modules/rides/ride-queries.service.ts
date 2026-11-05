@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { ReservationStatus, RideStatus } from '../../generated/prisma/enums';
 import { SearchRidesDto } from './search-rides.dto';
+import { availableSeatsSql } from './ride-availability';
 
 const rideInclude = {
   driver: { select: { id: true, fullName: true } },
@@ -28,7 +29,7 @@ export class RideQueriesService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`r.status IN ('OPEN', 'SCHEDULED')`,
       Prisma.sql`r.departure_at > NOW()`,
-      Prisma.sql`r.available_seats > 0`,
+      Prisma.sql`${availableSeatsSql} > 0`,
       Prisma.sql`(
         EXISTS (
           SELECT 1
@@ -64,8 +65,10 @@ export class RideQueriesService {
     const counts = await this.prisma.$queryRaw<{ total: number }[]>(
       Prisma.sql`SELECT count(*)::int AS total ${from}`,
     );
-    const ids = await this.prisma.$queryRaw<{ id: string }[]>(
-      Prisma.sql`SELECT r.id ${from} ORDER BY r.departure_at ASC, r.id ASC LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`,
+    const ids = await this.prisma.$queryRaw<
+      { id: string; availableSeats: number }[]
+    >(
+      Prisma.sql`SELECT r.id, ${availableSeatsSql} AS "availableSeats" ${from} ORDER BY r.departure_at ASC, r.id ASC LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`,
     );
     const rides = ids.length
       ? await this.prisma.ride.findMany({
@@ -83,10 +86,13 @@ export class RideQueriesService {
           _count: { score: true },
         })
       : [];
-    const byDriver = new Map(ratings.map((rating) => [rating.reviewedUserId, rating]));
+    const byDriver = new Map(
+      ratings.map((rating) => [rating.reviewedUserId, rating]),
+    );
     return {
       items: rides.map((ride) => ({
         ...ride,
+        availableSeats: ids.find(({ id }) => id === ride.id)!.availableSeats,
         driver: {
           ...ride.driver,
           ratingAverage: byDriver.get(ride.driverId)?._avg.score ?? null,
@@ -99,6 +105,66 @@ export class RideQueriesService {
     };
   }
 
+  async details(id: string, userId: string) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id },
+      include: {
+        ...rideInclude,
+        vehicle: {
+          select: { brand: true, model: true, color: true, year: true },
+        },
+        requests: {
+          where: { passengerId: userId },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            seatsRequested: true,
+            expiresAt: true,
+            reservation: { select: { status: true } },
+          },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Carona não encontrada.');
+    const now = new Date();
+    const availability = await this.prisma.$queryRaw<
+      { availableSeats: number }[]
+    >(
+      Prisma.sql`SELECT ${availableSeatsSql} AS "availableSeats" FROM rides r WHERE r.id = ${id}::uuid`,
+    );
+    const lastRequest = ride.requests[0];
+    const request = lastRequest
+      ? {
+          ...lastRequest,
+          status:
+            lastRequest.status === 'PENDING' &&
+            (lastRequest.expiresAt <= now ||
+              !['OPEN', 'SCHEDULED'].includes(ride.status))
+              ? 'EXPIRED'
+              : lastRequest.status,
+        }
+      : null;
+    const availableSeats = availability[0]?.availableSeats ?? 0;
+    const blocked =
+      request?.status === 'PENDING' ||
+      request?.reservation?.status === 'CONFIRMED';
+    const { requests: _requests, ...details } = ride;
+    return {
+      ...details,
+      availableSeats,
+      request,
+      canRequest:
+        !blocked &&
+        ride.driverId !== userId &&
+        ride.departureAt > now &&
+        ['OPEN', 'SCHEDULED'].includes(ride.status) &&
+        availableSeats > 0,
+      isDriver: ride.driverId === userId,
+    };
+  }
+
   async upcoming(userId: string) {
     const rides = await this.prisma.ride.findMany({
       where: {
@@ -106,12 +172,21 @@ export class RideQueriesService {
         departureAt: { gte: new Date() },
         OR: [
           { driverId: userId },
-          { reservations: { some: { passengerId: userId, status: ReservationStatus.CONFIRMED } } },
+          {
+            reservations: {
+              some: {
+                passengerId: userId,
+                status: ReservationStatus.CONFIRMED,
+              },
+            },
+          },
         ],
       },
       include: {
         ...rideInclude,
-        reservations: { where: { passengerId: userId, status: ReservationStatus.CONFIRMED } },
+        reservations: {
+          where: { passengerId: userId, status: ReservationStatus.CONFIRMED },
+        },
       },
       orderBy: [{ departureAt: 'asc' }, { id: 'asc' }],
       take: 3,
@@ -132,6 +207,8 @@ export class RideQueriesService {
       parsed.getUTCMonth() !== month - 1 ||
       parsed.getUTCDate() !== day
     )
-      throw new BadRequestException('Informe uma data válida no formato dd/mm/aaaa.');
+      throw new BadRequestException(
+        'Informe uma data válida no formato dd/mm/aaaa.',
+      );
   }
 }

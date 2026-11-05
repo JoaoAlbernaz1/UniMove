@@ -64,6 +64,7 @@ export function HomeScreen({
   onNavigateSearch,
   onNavigateOffer,
   onRegisterVehicle,
+  onNavigateDriverRequests,
   onNavigateMessages,
   onNavigateHistory,
   onNavigateProfile,
@@ -74,6 +75,7 @@ export function HomeScreen({
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
   onRegisterVehicle?: () => void;
+  onNavigateDriverRequests?: () => void;
   onNavigateMessages?: () => void;
   onNavigateHistory?: () => void;
   onNavigateProfile?: (userId: string) => void;
@@ -359,6 +361,9 @@ export function HomeScreen({
             ) : null}
 
             <View style={styles.quickSection}>
+              {hasVehicle ? <View style={styles.driverRequestsLink}>
+                <Button title="Pedidos de carona" variant="outline" onPress={() => onNavigateDriverRequests?.()} />
+              </View> : null}
               <Text style={styles.sectionTitle}>Acesso rápido</Text>
               <View style={styles.quickGrid}>
                 <Pressable
@@ -715,6 +720,7 @@ const styles = StyleSheet.create({
   searchCard: { backgroundColor: colors.accent },
   offerCard: { backgroundColor: colors.primary },
   unavailableCard: { opacity: 0.5 },
+  driverRequestsLink: { marginBottom: 16 },
   vehicleNotice: { gap: 8, marginTop: -15, marginBottom: 24 },
   actionIconLight: {
     width: 42,

@@ -33,13 +33,18 @@ describe('Ride event notifications', () => {
           driverId: driver.id,
           status: RideStatus.OPEN,
           availableSeats: 2,
+          departureAt: new Date(Date.now() + 3600000),
         }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       rideRequest: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'request-id' }),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { seatsRequested: 0 } }),
       },
+      $queryRaw: jest.fn(),
     } as unknown as PrismaService;
+    prisma.$transaction = jest.fn((callback) => callback(prisma)) as never;
     const config = {
       get: jest.fn().mockReturnValue(15),
     } as unknown as ConfigService;
@@ -53,6 +58,7 @@ describe('Ride event notifications', () => {
         type: NotificationType.RIDE_REQUEST_RECEIVED,
         resourceId: 'request-id',
       }),
+      prisma,
     );
   });
 
@@ -150,6 +156,7 @@ describe('Ride event notifications', () => {
       status: RideRequestStatus.PENDING,
     };
     const tx = {
+      $queryRaw: jest.fn(),
       rideRequest: {
         findFirst: jest.fn().mockResolvedValue(request),
         update: jest.fn().mockResolvedValue({ ...request, status: RideRequestStatus.REJECTED }),
