@@ -13,6 +13,14 @@ export const configuration = () => ({
       .split(',')
       .filter(Boolean),
   },
+  admin: {
+    // Origens do painel, conferidas nas escritas feitas com cookie de sessão.
+    origins: (process.env.ADMIN_PANEL_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+    sessionMaxHours: Number(process.env.ADMIN_SESSION_MAX_HOURS ?? 12),
+  },
   rides: { requestExpirationMinutes: Number(process.env.RIDE_REQUEST_EXPIRATION_MINUTES ?? 15) },
   matching: { toleranceMinutes: Number(process.env.MATCHING_TIME_TOLERANCE_MINUTES ?? 30) },
 });

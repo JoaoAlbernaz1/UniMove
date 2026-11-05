@@ -9,6 +9,7 @@ import {
   UserStatus,
 } from '../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
+import { assertNotLastAdmin } from '../admin/admin-invariants';
 
 @Injectable()
 export class AccountDeletionService {
@@ -38,6 +39,7 @@ export class AccountDeletionService {
         });
         if (current.status !== UserStatus.ACTIVE)
           throw new UnauthorizedException('Conta indisponível para exclusão.');
+        await assertNotLastAdmin(tx, userId);
 
         const now = new Date();
         const activeRideFilter = {
@@ -109,8 +111,24 @@ export class AccountDeletionService {
           where: { OR: [{ reportedById: userId }, { reportedUserId: userId }] },
           data: { description: 'Descrição removida após exclusão da conta' },
         });
+        // O autor de uma decisão sobre terceiros continua ligado a ela. A conta fica
+        // anonimizada, então isso não expõe a pessoa, e excluir a conta não apaga o rastro.
         await tx.auditLog.updateMany({
-          where: { OR: [{ actorUserId: userId }, { entityId: userId }] },
+          where: {
+            OR: [
+              { entityId: userId },
+              {
+                actorUserId: userId,
+                NOT: {
+                  OR: [
+                    { action: { startsWith: 'ADMIN_' } },
+                    { action: { startsWith: 'ACADEMIC_VERIFICATION_' } },
+                    { action: 'INCIDENT_UPDATED' },
+                  ],
+                },
+              },
+            ],
+          },
           data: { actorUserId: null, entityId: null, metadata: Prisma.JsonNull, ip: null },
         });
         await tx.academicVerification.updateMany({

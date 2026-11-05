@@ -10,7 +10,13 @@ describe('AccountDeletionService', () => {
   const passwordHash = argon2.hash(currentPassword, { type: argon2.argon2id });
   const tx = {
     $queryRaw: jest.fn(),
-    user: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
+    $executeRaw: jest.fn(),
+    user: {
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+    },
     ride: { count: jest.fn(), updateMany: jest.fn() },
     rideRequest: { count: jest.fn() },
     rideReservation: { count: jest.fn() },
@@ -44,6 +50,8 @@ describe('AccountDeletionService', () => {
       callback(tx),
     );
     tx.user.findUniqueOrThrow.mockResolvedValue({ status: UserStatus.ACTIVE });
+    tx.user.findUnique.mockResolvedValue({ roles: [] });
+    tx.user.count.mockResolvedValue(0);
     tx.ride.count.mockResolvedValue(0);
     tx.rideRequest.count.mockResolvedValue(0);
     tx.rideReservation.count.mockResolvedValue(0);
@@ -55,6 +63,15 @@ describe('AccountDeletionService', () => {
       UnauthorizedException,
     );
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('impede que o último administrador válido apague a própria conta', async () => {
+    tx.user.findUnique.mockResolvedValue({ roles: [{ role: { name: 'ADMIN' } }] });
+
+    await expect(service.deleteAccount(userId, currentPassword)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(tx.user.update).not.toHaveBeenCalled();
   });
 
   it('bloqueia exclusão enquanto há compromissos de carona ativos', async () => {

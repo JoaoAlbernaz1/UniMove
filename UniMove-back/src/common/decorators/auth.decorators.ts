@@ -8,7 +8,10 @@ export const Roles = (...roles: RoleName[]) => SetMetadata(ROLES_KEY, roles);
 
 export interface AuthUser {
   id: string;
+  /** Lidas do banco a cada requisição: revogar uma role vale de imediato. */
   roles: RoleName[];
+  /** Login concluído com segundo fator, e o segundo fator continua ativo. */
+  mfa?: boolean;
 }
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): AuthUser =>

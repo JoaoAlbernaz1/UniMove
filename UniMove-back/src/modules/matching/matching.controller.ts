@@ -5,7 +5,7 @@ import { IsDateString, IsInt, IsUUID, Matches, Max, Min } from 'class-validator'
 import { ConfigService } from '@nestjs/config';
 import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { RoleName, Weekday } from '../../generated/prisma/enums';
+import { RoleName, UserStatus, Weekday } from '../../generated/prisma/enums';
 
 class SearchDto {
   @IsUUID() originLocationId!: string;
@@ -40,6 +40,7 @@ export class MatchingController {
       where: {
         active: true,
         driver: {
+          status: UserStatus.ACTIVE,
           driverLicense: { isNot: null },
           OR: [
             { academicVerification: { is: { status: 'APPROVED' } } },

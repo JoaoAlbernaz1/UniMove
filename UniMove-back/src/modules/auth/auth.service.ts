@@ -2,7 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { createDecipheriv, createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
@@ -13,21 +13,8 @@ import {
   PRIVACY_POLICY_VERSION,
 } from './registration-policy';
 import { TERMS_OF_USE, PRIVACY_POLICY } from './registration-documents';
-
-function decryptTwoFactorSecret(value: string) {
-  const [ivValue, tagValue, encryptedValue] = value.split('.');
-  if (!ivValue || !tagValue || !encryptedValue) throw new UnauthorizedException('Segredo 2FA inválido.');
-  const seed = process.env.TWO_FACTOR_ENCRYPTION_KEY
-    || process.env.AUTH_REFRESH_SECRET
-    || 'unimove-development-two-factor-key';
-  const key = createHash('sha256').update(seed).digest();
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivValue, 'base64url'));
-  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedValue, 'base64url')),
-    decipher.final(),
-  ]).toString('utf8');
-}
+import { AuthAttemptLimiter } from './auth-attempt-limiter';
+import { decryptTwoFactorSecret } from './two-factor-crypto';
 
 @Injectable()
 export class AuthService {
@@ -45,6 +32,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly limiter: AuthAttemptLimiter,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -104,17 +92,34 @@ export class AuthService {
       throw new UnauthorizedException('Conta indisponível para login.');
     }
     if (user.twoFactor?.enabled) {
-      if (!dto.twoFactorCode)
-        return { twoFactorRequired: true as const };
-      const secret = decryptTwoFactorSecret(user.twoFactor.secret);
-      const result = await verify({ token: dto.twoFactorCode, secret });
-      if (!result.valid)
+      if (!dto.twoFactorCode) return { twoFactorRequired: true as const };
+      // Sem isto, quem tem a senha testa códigos a 100 por minuto, e um Bearer com
+      // segundo fator abre as rotas administrativas.
+      const limitKey = `2fa:${user.id}`;
+      this.limiter.assertAllowed(limitKey);
+      const { secret } = decryptTwoFactorSecret(user.twoFactor.secret);
+      const result = await verify({ token: dto.twoFactorCode, secret, epochTolerance: 30 });
+      if (!result.valid || !this.limiter.claimCode(user.id, dto.twoFactorCode)) {
+        this.limiter.recordFailure(limitKey);
+        if (user.roles.some((item) => item.role.name === RoleName.ADMIN))
+          await this.prisma.auditLog.create({
+            data: {
+              actorUserId: user.id,
+              action: 'ADMIN_2FA_FAILED',
+              entityType: 'User',
+              entityId: user.id,
+            },
+          });
         throw new UnauthorizedException('Código de autenticação inválido.');
+      }
+      this.limiter.reset(limitKey);
     }
     const tokens = await this.issueTokens(
       user.id,
       user.roles.map((item) => item.role.name),
       userAgent,
+      undefined,
+      user.twoFactor?.enabled === true,
     );
     await this.prisma.auditLog.create({
       data: { actorUserId: user.id, action: 'LOGIN', entityType: 'User', entityId: user.id },
@@ -123,7 +128,7 @@ export class AuthService {
   }
 
   async refresh(rawToken: string, userAgent?: string) {
-    let payload: { sub: string; sid: string; familyId: string; type: string };
+    let payload: { sub: string; sid: string; familyId: string; type: string; mfa?: boolean };
     try {
       payload = await this.jwt.verifyAsync(rawToken, {
         secret: this.config.getOrThrow('auth.refreshSecret'),
@@ -131,6 +136,8 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Refresh token inválido.');
     }
+    // O refresh da sessão do painel tem rota própria e não vira token Bearer.
+    if (payload.type !== 'refresh') throw new UnauthorizedException('Refresh token inválido.');
     const session = await this.prisma.refreshSession.findUnique({
       where: { id: payload.sid },
       include: { user: { include: { roles: { include: { role: true } } } } },
@@ -143,11 +150,14 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('Refresh token revogado ou expirado.');
     }
+    if (session.user.status !== UserStatus.ACTIVE)
+      throw new UnauthorizedException('Conta indisponível para login.');
     return this.issueTokens(
       session.userId,
       session.user.roles.map((item) => item.role.name),
       userAgent,
       session,
+      payload.mfa === true,
     );
   }
 
@@ -171,18 +181,19 @@ export class AuthService {
     roles: RoleName[],
     userAgent?: string,
     previous?: { id: string; familyId: string },
+    mfa = false,
   ) {
     const familyId = previous?.familyId ?? randomUUID();
     const sessionId = randomUUID();
     const accessToken = await this.jwt.signAsync(
-      { sub: userId, roles, type: 'access' },
+      { sub: userId, roles, type: 'access', mfa },
       {
         secret: this.config.getOrThrow('auth.accessSecret'),
         expiresIn: this.config.get('auth.accessExpiration'),
       },
     );
     const refreshToken = await this.jwt.signAsync(
-      { sub: userId, sid: sessionId, familyId, type: 'refresh' },
+      { sub: userId, sid: sessionId, familyId, type: 'refresh', mfa },
       {
         secret: this.config.getOrThrow('auth.refreshSecret'),
         expiresIn: this.config.get('auth.refreshExpiration'),

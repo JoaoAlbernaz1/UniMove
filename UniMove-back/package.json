@@ -20,6 +20,7 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "test:integration": "npm run build && node test/ride-queries.integration.cjs",
+    "test:admin-integration": "npm run build && node test/admin.integration.cjs",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

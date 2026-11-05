@@ -6,6 +6,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../../database/prisma.service';
 import { UserStatus } from '../../generated/prisma/enums';
+import { AuthAttemptLimiter } from './auth-attempt-limiter';
 import { AuthService } from './auth.service';
 
 describe('AuthService registration', () => {
@@ -29,7 +30,7 @@ describe('AuthService registration', () => {
   const config = {
     get: jest.fn((key: string) => (key === 'auth.institutionalDomains' ? ['ucb.edu.br'] : null)),
   } as unknown as ConfigService;
-  const service = new AuthService(prisma, {} as JwtService, config);
+  const service = new AuthService(prisma, {} as JwtService, config, new AuthAttemptLimiter());
   const dto = {
     fullName: 'Maria Souza',
     cpf: '52998224725',

@@ -4,14 +4,25 @@ import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY, AuthUser } from '../decorators/auth.decorators';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { ADMIN_SESSION_ALLOWED } from '../decorators/admin.decorators';
+import {
+  adminCookieNames,
+  assertAdminCsrf,
+  assertAdminOrigin,
+  isUnsafeMethod,
+} from '../security/admin-session';
+import { UserStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
 
 interface AccessPayload {
   sub: string;
-  roles: RoleName[];
   type: 'access';
+  mfa?: boolean;
+  scope?: 'admin';
+  sid?: string;
 }
+
+const REJECTED = 'Token de acesso inválido ou expirado.';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -23,13 +34,8 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext) {
-    if (
-      this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ])
-    )
-      return true;
+    const targets = [context.getHandler(), context.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets)) return true;
     if (context.getType() === 'ws') {
       const client = context.switchToWs().getClient<{ data?: { userId?: string } }>();
       if (typeof client.data?.userId !== 'string')
@@ -38,25 +44,62 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { user: AuthUser }>();
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    if (type !== 'Bearer' || !token) throw new UnauthorizedException('Token de acesso ausente.');
+    const [type, bearer] = request.headers.authorization?.split(' ') ?? [];
+    const bearerToken = type === 'Bearer' ? bearer : undefined;
+    const cookieToken =
+      !bearerToken && this.reflector.getAllAndOverride<boolean>(ADMIN_SESSION_ALLOWED, targets)
+        ? (request.cookies as Record<string, string> | undefined)?.[adminCookieNames().access]
+        : undefined;
+    const token = bearerToken ?? cookieToken;
+    if (!token) throw new UnauthorizedException('Token de acesso ausente.');
+
     let payload: AccessPayload;
     try {
       payload = await this.jwt.verifyAsync<AccessPayload>(token, {
         secret: this.config.getOrThrow('auth.accessSecret'),
       });
     } catch {
-      throw new UnauthorizedException('Token de acesso inválido ou expirado.');
+      throw new UnauthorizedException(REJECTED);
     }
-    if (payload.type !== 'access')
-      throw new UnauthorizedException('Token de acesso inválido ou expirado.');
+    // Token de sessão do painel só circula em cookie, e o cookie só carrega esse token.
+    const adminSession = payload.scope === 'admin';
+    if (payload.type !== 'access' || adminSession !== Boolean(cookieToken))
+      throw new UnauthorizedException(REJECTED);
+
+    if (cookieToken && isUnsafeMethod(request.method)) {
+      assertAdminOrigin(request, this.config.get<string[]>('admin.origins'));
+      assertAdminCsrf(request);
+    }
+
+    // Conta, roles e segundo fator vêm do banco: o que o token diz vale só para
+    // identificar o usuário, nunca para autorizar.
     const account = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { status: true },
+      select: {
+        status: true,
+        roles: { select: { role: { select: { name: true } } } },
+        twoFactor: { select: { enabled: true } },
+        ...(adminSession
+          ? {
+              refreshSessions: {
+                where: { id: payload.sid, revokedAt: null, expiresAt: { gt: new Date() } },
+                select: { id: true },
+                take: 1,
+              },
+            }
+          : {}),
+      },
     });
     if (account?.status !== UserStatus.ACTIVE)
       throw new UnauthorizedException('Conta indisponível para acesso.');
-    request.user = { id: payload.sub, roles: payload.roles };
+    if (adminSession && !account.refreshSessions?.length)
+      throw new UnauthorizedException('Sessão administrativa encerrada.');
+
+    request.user = {
+      id: payload.sub,
+      roles: account.roles.map((item) => item.role.name),
+      mfa: payload.mfa === true && account.twoFactor?.enabled === true,
+    };
     return true;
   }
 }

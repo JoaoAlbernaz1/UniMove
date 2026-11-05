@@ -46,6 +46,14 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Cifra os segredos de 2FA. Sem ela, o painel recusa cadastrar autenticador de
+      # administrador em produção. Segredos já gravados continuam legíveis.
+      - key: TWO_FACTOR_ENCRYPTION_KEY
+        generateValue: true
+      # Origens do painel administrativo, separadas por vírgula. Preenchida no painel
+      # do Render depois de criar o projeto na Vercel. Vazia, o painel não autentica.
+      - key: ADMIN_PANEL_ORIGINS
+        sync: false
       - key: JWT_ACCESS_EXPIRATION
         value: 15m
       - key: JWT_REFRESH_EXPIRATION

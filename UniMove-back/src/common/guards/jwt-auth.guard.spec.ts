@@ -31,22 +31,48 @@ describe('JwtAuthGuard', () => {
     getAllAndOverride.mockReturnValue(false);
     verifyAsync.mockResolvedValue({
       sub: 'user-id',
-      roles: [RoleName.PASSENGER],
+      roles: [RoleName.ADMIN],
       type: 'access',
     });
-    findUnique.mockResolvedValue({ status: UserStatus.ACTIVE });
+    findUnique.mockResolvedValue({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: { name: RoleName.PASSENGER } }],
+      twoFactor: null,
+    });
   });
 
   it('confirma que a conta continua ativa antes de aceitar o token', async () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(findUnique).toHaveBeenCalledWith({
-      where: { id: 'user-id' },
-      select: { status: true },
-    });
     expect(request).toHaveProperty('user', {
       id: 'user-id',
       roles: [RoleName.PASSENGER],
+      mfa: false,
     });
+  });
+
+  it('autoriza pelas roles do banco, não pelas gravadas no token', async () => {
+    await guard.canActivate(context);
+    expect(request).toHaveProperty('user.roles', [RoleName.PASSENGER]);
+  });
+
+  it('só reconhece o segundo fator se o token e a conta confirmarem', async () => {
+    verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', mfa: true });
+    await guard.canActivate(context);
+    expect(request).toHaveProperty('user.mfa', false);
+
+    findUnique.mockResolvedValue({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: { name: RoleName.ADMIN } }],
+      twoFactor: { enabled: true },
+    });
+    await guard.canActivate(context);
+    expect(request).toHaveProperty('user.mfa', true);
+  });
+
+  it('recusa token da sessão do painel enviado como Bearer', async () => {
+    verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', scope: 'admin', sid: 'sid' });
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(findUnique).not.toHaveBeenCalled();
   });
 
   it('invalida imediatamente tokens de contas desativadas', async () => {

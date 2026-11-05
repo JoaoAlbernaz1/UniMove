@@ -133,23 +133,33 @@ export class VerificationService {
     }
   }
 
-  async listPendingReviews(skip: number, take: number) {
-    return this.prisma.academicVerification.findMany({
-      where: { status: AcademicVerificationStatus.PENDING_REVIEW },
-      include: {
-        user: {
-          select: {
-            fullName: true,
-            institutionalEmail: true,
-            studentNumber: true,
-            course: true,
+  async listReviews(status: AcademicVerificationStatus, skip: number, take: number) {
+    const where = { status };
+    const [items, total] = await Promise.all([
+      this.prisma.academicVerification.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              fullName: true,
+              institutionalEmail: true,
+              studentNumber: true,
+              course: true,
+            },
           },
+          reviewedBy: { select: { fullName: true } },
         },
-      },
-      orderBy: { submittedAt: 'asc' },
-      skip,
-      take,
-    });
+        // Pendentes: a mais antiga primeiro. Decididas: a mais recente primeiro.
+        orderBy:
+          status === AcademicVerificationStatus.PENDING_REVIEW
+            ? { submittedAt: 'asc' }
+            : { reviewedAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.academicVerification.count({ where }),
+    ]);
+    return { items, total };
   }
 
   async review(
@@ -170,7 +180,17 @@ export class VerificationService {
           reviewNote: reviewNote?.trim() || null,
         },
       });
-      if (!update.count) throw new NotFoundException('Validação pendente não encontrada.');
+      if (!update.count) {
+        const existing = await tx.academicVerification.findUnique({
+          where: { userId },
+          select: { status: true },
+        });
+        if (!existing) throw new NotFoundException('Validação não encontrada.');
+        throw new ConflictException({
+          code: 'VERIFICATION_ALREADY_DECIDED',
+          message: 'Esta validação já foi decidida por outro administrador.',
+        });
+      }
       const verification = await tx.academicVerification.findUniqueOrThrow({
         where: { userId },
         include: {
