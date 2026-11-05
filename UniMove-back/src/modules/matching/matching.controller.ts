@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
 import { RoleName, UserStatus, Weekday } from '../../generated/prisma/enums';
+import { heldSeats } from '../rides/ride-availability';
 
 class SearchDto {
   @IsUUID() originLocationId!: string;
@@ -86,8 +87,13 @@ export class MatchingController {
         }),
       ),
     );
-    return rides
-      .filter((ride) => ride.availableSeats >= dto.seats)
+    const now = new Date();
+    const available = await Promise.all(rides.map(async (ride) => ({
+      ...ride,
+      availableSeats: Math.max(0, ride.availableSeats - await heldSeats(this.prisma, ride.id, now)),
+    })));
+    return available
+      .filter((ride) => ['OPEN', 'SCHEDULED'].includes(ride.status) && ride.departureAt > now && ride.availableSeats >= dto.seats)
       .sort(
         (a, b) =>
           Math.abs(

@@ -24,6 +24,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Me } from '../api/auth';
+import { getVehicles } from '../api/vehicles';
 import { useAuth } from '../auth/AuthContext';
 import { Message } from '../components/Message';
 import { Button } from '../components/Button';
@@ -62,6 +63,8 @@ const statusLabels: Record<Ride['status'], string> = {
 export function HomeScreen({
   onNavigateSearch,
   onNavigateOffer,
+  onRegisterVehicle,
+  onNavigateDriverRequests,
   onNavigateMessages,
   onNavigateHistory,
   onNavigateProfile,
@@ -71,6 +74,8 @@ export function HomeScreen({
 }: {
   onNavigateSearch?: () => void;
   onNavigateOffer?: () => void;
+  onRegisterVehicle?: () => void;
+  onNavigateDriverRequests?: () => void;
   onNavigateMessages?: () => void;
   onNavigateHistory?: () => void;
   onNavigateProfile?: (userId: string) => void;
@@ -87,6 +92,8 @@ export function HomeScreen({
   const [ridesError, setRidesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasVehicle, setHasVehicle] = useState<boolean | null>(null);
+  const [vehiclesError, setVehiclesError] = useState<string | null>(null);
   const [verificationPromptVisible, setVerificationPromptVisible] = useState(false);
   const [verificationCheckError, setVerificationCheckError] = useState<string | null>(null);
   const [checkingRideAccess, setCheckingRideAccess] = useState(false);
@@ -106,7 +113,15 @@ export function HomeScreen({
       Promise.allSettled([
         authApi<HomeProfile>('/users/me'),
         authApi<Ride[]>('/rides/upcoming'),
-      ]).then(([profileResult, ridesResult]) => {
+        getVehicles(authApi),
+      ]).then(([profileResult, ridesResult, vehiclesResult]) => {
+        if (vehiclesResult.status === 'fulfilled') {
+          setHasVehicle(vehiclesResult.value.length > 0);
+          setVehiclesError(null);
+        } else {
+          setHasVehicle(null);
+          setVehiclesError('Não foi possível consultar seus veículos. Tente novamente.');
+        }
         if (profileResult.status === 'fulfilled') {
           setMe(profileResult.value);
           setProfileError(null);
@@ -139,6 +154,9 @@ export function HomeScreen({
 
   async function enterRideFeature(destination: 'search' | 'offer') {
     if (checkingRideAccess) return;
+    if (destination === 'offer' && hasVehicle !== true) {
+      return;
+    }
     setPendingRideFeature(destination);
     setCheckingRideAccess(true);
     setVerificationCheckError(null);
@@ -294,13 +312,17 @@ export function HomeScreen({
 
               <Pressable
                 onPress={() => void enterRideFeature('offer')}
-                disabled={checkingRideAccess}
+                disabled={checkingRideAccess || hasVehicle !== true}
                 style={({ pressed }) => [
                   styles.actionCard,
                   styles.offerCard,
                   pressed && styles.pressed,
+                  hasVehicle !== true && styles.unavailableCard,
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel={hasVehicle === false ? 'Oferecer carona. Cadastre seu carro para publicar.' : 'Oferecer carona'}
+                accessibilityHint={hasVehicle === false ? 'Use o botão Cadastrar carro abaixo para habilitar esta opção.' : undefined}
+                accessibilityState={{ disabled: checkingRideAccess || hasVehicle !== true }}
               >
                 <View style={styles.actionIconDark}>
                   <CarFront size={22} color={colors.white} />
@@ -309,7 +331,7 @@ export function HomeScreen({
                   <Text style={styles.actionTitle}>Oferecer</Text>
                   <Text style={styles.actionTitle}>carona</Text>
                   <Text style={styles.actionSubtitle}>
-                    Compartilhe o trajeto
+                    {hasVehicle === false ? 'Cadastre seu carro' : hasVehicle === null ? 'Consultando veículos…' : 'Compartilhe o trajeto'}
                   </Text>
                 </View>
                 <ArrowRight
@@ -320,7 +342,28 @@ export function HomeScreen({
               </Pressable>
             </View>
 
+            {hasVehicle === false ? (
+              <View style={styles.vehicleNotice}>
+                <Text style={styles.introSubtitle}>
+                  Para publicar uma carona, cadastre seu carro primeiro.
+                </Text>
+                <Pressable onPress={onRegisterVehicle} accessibilityRole="button">
+                  <Text style={styles.retryText}>Cadastrar carro →</Text>
+                </Pressable>
+              </View>
+            ) : vehiclesError ? (
+              <View style={styles.vehicleNotice}>
+                <Message tone="error">{vehiclesError}</Message>
+                <Pressable onPress={() => void loadHome()} accessibilityRole="button">
+                  <Text style={styles.retryText}>Tentar novamente</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             <View style={styles.quickSection}>
+              {hasVehicle ? <View style={styles.driverRequestsLink}>
+                <Button title="Pedidos de carona" variant="outline" onPress={() => onNavigateDriverRequests?.()} />
+              </View> : null}
               <Text style={styles.sectionTitle}>Acesso rápido</Text>
               <View style={styles.quickGrid}>
                 <Pressable
@@ -676,6 +719,9 @@ const styles = StyleSheet.create({
   },
   searchCard: { backgroundColor: colors.accent },
   offerCard: { backgroundColor: colors.primary },
+  unavailableCard: { opacity: 0.5 },
+  driverRequestsLink: { marginBottom: 16 },
+  vehicleNotice: { gap: 8, marginTop: -15, marginBottom: 24 },
   actionIconLight: {
     width: 42,
     height: 42,

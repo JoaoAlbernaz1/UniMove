@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
@@ -15,5 +15,10 @@ export class RideQueriesController {
   }
   @Get('upcoming') upcoming(@CurrentUser() user: AuthUser) {
     return this.queries.upcoming(user.id);
+  }
+  @Get(':id/details')
+  @RequireAcademicVerification()
+  details(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.queries.details(id, user.id);
   }
 }

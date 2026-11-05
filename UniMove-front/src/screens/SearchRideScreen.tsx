@@ -20,6 +20,8 @@ import { useAuth } from '../auth/AuthContext';
 import { formatRideDate, formatRideTime } from '../offerRide';
 import { OpenFreeMap, type MapPoint } from '../components/OpenFreeMap';
 import { colors, fonts, maxContentWidth } from '../theme';
+import { RideDetailsScreen } from './RideDetailsScreen';
+import { RideRequestsScreen } from './RideRequestsScreen';
 
 type Ride = {
   id: string;
@@ -53,6 +55,9 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
   const pageSize = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [showRequests, setShowRequests] = useState(false);
 
   // A API aplica os filtros e devolve uma página já ordenada.
   useEffect(() => {
@@ -95,7 +100,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
       active = false;
       clearTimeout(timeout);
     };
-  }, [authApi, origin, destination, dateFilter, timeFilter, page]);
+  }, [authApi, origin, destination, dateFilter, timeFilter, page, refreshVersion]);
 
   function clearFilters() {
     setOrigin('');
@@ -142,6 +147,15 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
       .toUpperCase();
   };
 
+  if (selectedRideId) return <RideDetailsScreen rideId={selectedRideId} onBack={() => {
+    setSelectedRideId(null);
+    setRefreshVersion((current) => current + 1);
+  }} />;
+  if (showRequests) return <RideRequestsScreen mode="passenger" onBack={() => {
+    setShowRequests(false);
+    setRefreshVersion((current) => current + 1);
+  }} onViewRide={setSelectedRideId} />;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.keyboardView}>
@@ -158,6 +172,10 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
             <Text style={styles.headerTitle}>Buscar Carona</Text>
             <View style={{ width: 40 }} />
           </View>
+
+          <Pressable onPress={() => setShowRequests(true)} accessibilityRole="button" style={styles.requestsLink}>
+            <Text style={styles.requestsLinkText}>Minhas solicitações →</Text>
+          </Pressable>
 
           <View style={styles.inputsContainer}>
             <View style={styles.inputWrapper}>
@@ -392,7 +410,7 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
                             ? 'vaga disponível'
                             : 'vagas disponíveis'}
                         </Text>
-                        <Pressable style={styles.reserveButton}>
+                        <Pressable style={styles.reserveButton} onPress={() => setSelectedRideId(ride.id)} accessibilityRole="button" accessibilityLabel={`Ver detalhes e solicitar carona com ${ride.driver.fullName}`}>
                           <Text style={styles.reserveButtonText}>Reservar</Text>
                         </Pressable>
                       </View>
@@ -409,6 +427,8 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  requestsLink: { alignSelf: 'flex-end', paddingVertical: 12, paddingHorizontal: 8 },
+  requestsLinkText: { color: colors.white, fontFamily: fonts.medium, fontSize: 13 },
   safe: { flex: 1, backgroundColor: colors.primary },
   keyboardView: { flex: 1 },
 
