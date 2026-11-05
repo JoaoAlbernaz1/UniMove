@@ -42,7 +42,10 @@ export class DriverRequestsController {
     if (expired.length) {
       await this.prisma.$transaction(async (tx) => {
         await tx.rideRequest.updateMany({
-          where: { id: { in: expired.map((request) => request.id) }, status: RideRequestStatus.PENDING },
+          where: {
+            id: { in: expired.map((request) => request.id) },
+            status: RideRequestStatus.PENDING,
+          },
           data: { status: RideRequestStatus.EXPIRED, respondedAt: new Date() },
         });
         await this.notifications.createMany(
@@ -62,7 +65,12 @@ export class DriverRequestsController {
     return this.prisma.rideRequest.findMany({
       where: { ride: { driverId: user.id }, ...(query.status ? { status: query.status } : {}) },
       include: {
-        ride: { include: { originLocation: { select: { name: true } }, destinationLocation: { select: { name: true } } } },
+        ride: {
+          include: {
+            originLocation: { select: { name: true } },
+            destinationLocation: { select: { name: true } },
+          },
+        },
         passenger: { select: { id: true, fullName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -109,11 +117,15 @@ export class RideRequestsController {
         if (request.status === RideRequestStatus.ACCEPTED)
           return tx.rideReservation.findUnique({ where: { requestId: id } });
         if (request.seatsRequested !== 1)
-          throw new ConflictException('Cada passageiro deve enviar sua própria solicitação de uma vaga. Recuse este pedido e solicite um novo envio individual.');
+          throw new ConflictException(
+            'Cada passageiro deve enviar sua própria solicitação de uma vaga. Recuse este pedido e solicite um novo envio individual.',
+          );
         if (request.status !== RideRequestStatus.PENDING || request.expiresAt <= new Date())
           throw new ConflictException('Solicitação não está pendente.');
         if (
-          ![RideStatus.OPEN, RideStatus.SCHEDULED].includes(request.ride.status as 'OPEN' | 'SCHEDULED') ||
+          ![RideStatus.OPEN, RideStatus.SCHEDULED].includes(
+            request.ride.status as 'OPEN' | 'SCHEDULED',
+          ) ||
           request.ride.departureAt <= new Date() ||
           request.ride.availableSeats < request.seatsRequested
         )

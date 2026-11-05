@@ -26,7 +26,9 @@ import { NotificationService } from '../notifications/notifications.service';
 import { heldSeats } from './ride-availability';
 
 export class RequestRideDto {
-  @IsInt() @Equals(1, { message: 'Cada usuário pode solicitar apenas uma vaga para si.' }) seats!: number;
+  @IsInt()
+  @Equals(1, { message: 'Cada usuário pode solicitar apenas uma vaga para si.' })
+  seats!: number;
 }
 class CancelDto {
   @IsString() reason!: string;
@@ -61,21 +63,13 @@ export class RidesController {
       const ride = await tx.ride.findUnique({ where: { id: rideId } });
       if (
         !ride ||
-        ![RideStatus.OPEN, RideStatus.SCHEDULED].includes(
-          ride.status as 'OPEN' | 'SCHEDULED',
-        ) ||
+        ![RideStatus.OPEN, RideStatus.SCHEDULED].includes(ride.status as 'OPEN' | 'SCHEDULED') ||
         ride.departureAt <= now
       )
-        throw new ConflictException(
-          'Carona não está aberta para solicitações.',
-        );
+        throw new ConflictException('Carona não está aberta para solicitações.');
       if (ride.driverId === user.id)
-        throw new ConflictException(
-          'Motorista não pode solicitar a própria carona.',
-        );
-      const minuteStart = new Date(
-        Math.floor(ride.departureAt.getTime() / 60000) * 60000,
-      );
+        throw new ConflictException('Motorista não pode solicitar a própria carona.');
+      const minuteStart = new Date(Math.floor(ride.departureAt.getTime() / 60000) * 60000);
       const departureAt = {
         gte: minuteStart,
         lt: new Date(minuteStart.getTime() + 60000),
@@ -109,13 +103,9 @@ export class RidesController {
         },
       });
       if (conflictingRide)
-        throw new ConflictException(
-          'Você já possui uma solicitação ou carona neste horário.',
-        );
+        throw new ConflictException('Você já possui uma solicitação ou carona neste horário.');
       if (ride.availableSeats - (await heldSeats(tx, rideId, now)) < 1)
-        throw new ConflictException(
-          'Desculpe, as vagas para esta carona acabaram de esgotar.',
-        );
+        throw new ConflictException('Desculpe, as vagas para esta carona acabaram de esgotar.');
 
       const request = await tx.rideRequest.create({
         data: {
@@ -125,9 +115,7 @@ export class RidesController {
           expiresAt: new Date(
             Math.min(
               ride.departureAt.getTime(),
-              now.getTime() +
-                this.config.get<number>('rides.requestExpirationMinutes')! *
-                  60000,
+              now.getTime() + this.config.get<number>('rides.requestExpirationMinutes')! * 60000,
             ),
           ),
         },
@@ -158,10 +146,7 @@ export class RidesController {
         : query.role === 'passenger'
           ? { reservations: { some: { passengerId: user.id } } }
           : {
-              OR: [
-                { driverId: user.id },
-                { reservations: { some: { passengerId: user.id } } },
-              ],
+              OR: [{ driverId: user.id }, { reservations: { some: { passengerId: user.id } } }],
             };
 
     return this.prisma.ride.findMany({
@@ -207,8 +192,7 @@ export class RidesController {
       ...request,
       status:
         request.status === RideRequestStatus.PENDING &&
-        (request.expiresAt <= now ||
-          !['OPEN', 'SCHEDULED'].includes(request.ride.status))
+        (request.expiresAt <= now || !['OPEN', 'SCHEDULED'].includes(request.ride.status))
           ? RideRequestStatus.EXPIRED
           : request.status,
     }));
@@ -244,21 +228,13 @@ export class RidesController {
   }
 
   @Post(':id/cancel')
-  async cancel(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body() dto: CancelDto,
-  ) {
+  async cancel(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: CancelDto) {
     return this.prisma.$transaction(async (tx) => {
       const ride = await tx.ride.findFirst({
         where: { id, driverId: user.id },
       });
       if (!ride) throw new NotFoundException('Carona não encontrada.');
-      if (
-        ([RideStatus.COMPLETED, RideStatus.CANCELLED] as RideStatus[]).includes(
-          ride.status,
-        )
-      )
+      if (([RideStatus.COMPLETED, RideStatus.CANCELLED] as RideStatus[]).includes(ride.status))
         throw new ConflictException('Estado não permite cancelamento.');
 
       const updated = await tx.ride.update({
@@ -326,10 +302,7 @@ export class RidesController {
           passengers.map((p) => ({
             userId: p.passengerId,
             type,
-            title:
-              status === RideStatus.IN_PROGRESS
-                ? 'Carona iniciada'
-                : 'Carona concluída',
+            title: status === RideStatus.IN_PROGRESS ? 'Carona iniciada' : 'Carona concluída',
             message:
               status === RideStatus.IN_PROGRESS
                 ? 'O motorista iniciou a carona.'

@@ -151,7 +151,10 @@ export class AdminOperationsService {
     if (!ride) throw new NotFoundException('Carona não encontrada.');
     return {
       ...ride,
-      availableSeats: seatsOnOffer(ride.availableSeats, await heldSeats(this.prisma, ride.id, new Date())),
+      availableSeats: seatsOnOffer(
+        ride.availableSeats,
+        await heldSeats(this.prisma, ride.id, new Date()),
+      ),
       vehicle: { ...ride.vehicle, plate: maskPlate(ride.vehicle.plate) },
     };
   }

@@ -7,9 +7,12 @@ import { validate } from 'class-validator';
 import { RideQueriesService } from './ride-queries.service';
 
 describe('Ride booking', () => {
-  it.each([0, 2, 3, 4, 5, 6, 7, 1.5, '1', null, undefined])('rejects a seat count of %p', async (seats) => {
-    expect(await validate(plainToInstance(RequestRideDto, { seats }))).not.toHaveLength(0);
-  });
+  it.each([0, 2, 3, 4, 5, 6, 7, 1.5, '1', null, undefined])(
+    'rejects a seat count of %p',
+    async (seats) => {
+      expect(await validate(plainToInstance(RequestRideDto, { seats }))).not.toHaveLength(0);
+    },
+  );
   it('accepts exactly one seat', async () => {
     expect(await validate(plainToInstance(RequestRideDto, { seats: 1 }))).toHaveLength(0);
   });
@@ -70,7 +73,7 @@ describe('Ride booking', () => {
 
   it('rejects another pending request, confirmed reservation or driven ride at the same minute', async () => {
     const { controller, tx } = setup();
-    tx.ride.findFirst.mockResolvedValue({ id: 'other-ride' } as never);
+    tx.ride.findFirst.mockResolvedValue({ id: 'other-ride' });
     await expect(controller.request(passenger, 'ride', { seats: 1 })).rejects.toThrow(
       'neste horário',
     );
@@ -120,15 +123,13 @@ describe('Ride booking', () => {
   it('reports an expired request without waiting for the driver to open their inbox', async () => {
     const prisma = {
       ride: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'ride',
-            driverId: 'driver',
-            status: 'OPEN',
-            departureAt: future(),
-            requests: [{ status: 'PENDING', expiresAt: new Date(0) }],
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ride',
+          driverId: 'driver',
+          status: 'OPEN',
+          departureAt: future(),
+          requests: [{ status: 'PENDING', expiresAt: new Date(0) }],
+        }),
       },
       $queryRaw: jest.fn().mockResolvedValue([{ availableSeats: 1 }]),
     };

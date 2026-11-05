@@ -88,12 +88,22 @@ export class MatchingController {
       ),
     );
     const now = new Date();
-    const available = await Promise.all(rides.map(async (ride) => ({
-      ...ride,
-      availableSeats: Math.max(0, ride.availableSeats - await heldSeats(this.prisma, ride.id, now)),
-    })));
+    const available = await Promise.all(
+      rides.map(async (ride) => ({
+        ...ride,
+        availableSeats: Math.max(
+          0,
+          ride.availableSeats - (await heldSeats(this.prisma, ride.id, now)),
+        ),
+      })),
+    );
     return available
-      .filter((ride) => ['OPEN', 'SCHEDULED'].includes(ride.status) && ride.departureAt > now && ride.availableSeats >= dto.seats)
+      .filter(
+        (ride) =>
+          ['OPEN', 'SCHEDULED'].includes(ride.status) &&
+          ride.departureAt > now &&
+          ride.availableSeats >= dto.seats,
+      )
       .sort(
         (a, b) =>
           Math.abs(
