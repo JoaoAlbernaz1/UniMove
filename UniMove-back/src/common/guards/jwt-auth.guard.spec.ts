@@ -89,15 +89,15 @@ describe('JwtAuthGuard', () => {
     expect(request).toHaveProperty('user.roles', [RoleName.PASSENGER]);
   });
 
-  it('usa os papéis do banco quando o token não lista nenhum, como o do painel', async () => {
+  it('token do aplicativo sem papéis não herda nenhum papel da conta', async () => {
     verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access' });
     findUnique.mockResolvedValue({
       status: UserStatus.ACTIVE,
-      roles: [{ role: { name: RoleName.ADMIN } }, { role: { name: RoleName.PASSENGER } }],
+      roles: [{ role: { name: RoleName.ADMIN } }, { role: { name: RoleName.DRIVER } }],
       twoFactor: { enabled: true },
     });
-    await guard.canActivate(context);
-    expect(request).toHaveProperty('user.roles', [RoleName.ADMIN, RoleName.PASSENGER]);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(request).toHaveProperty('user.roles', []);
   });
 
   it('só reconhece o segundo fator se o token e a conta confirmarem', async () => {
@@ -218,5 +218,70 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', mfa: true, scope: 'admin' });
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  /** O único caminho que pode partir dos papéis do banco é a sessão do painel inteira. */
+  describe('papéis da sessão administrativa', () => {
+    const sessaoDoPainel = () => {
+      adminRoute('admin');
+      delete request.headers.authorization;
+      request.cookies = { [adminCookieNames().access]: 'cookie-token' };
+      verifyAsync.mockResolvedValue({
+        sub: 'user-id',
+        type: 'access',
+        mfa: true,
+        scope: 'admin',
+        sid: 'sid',
+      });
+    };
+
+    it('sessão válida recebe os papéis atuais da conta', async () => {
+      sessaoDoPainel();
+      findUnique.mockResolvedValue({
+        status: UserStatus.ACTIVE,
+        roles: [{ role: { name: RoleName.ADMIN } }, { role: { name: RoleName.PASSENGER } }],
+        twoFactor: { enabled: true },
+        refreshSessions: [{ id: 'sid' }],
+      });
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request).toHaveProperty('user.roles', [RoleName.ADMIN, RoleName.PASSENGER]);
+    });
+
+    it('sessão revogada no banco não autentica', async () => {
+      sessaoDoPainel();
+      findUnique.mockResolvedValue({
+        status: UserStatus.ACTIVE,
+        roles: [{ role: { name: RoleName.ADMIN } }],
+        twoFactor: { enabled: true },
+        refreshSessions: [],
+      });
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('sessão sem segundo fator no token é recusada antes de receber papel', async () => {
+      sessaoDoPainel();
+      verifyAsync.mockResolvedValue({
+        sub: 'user-id',
+        type: 'access',
+        scope: 'admin',
+        sid: 'sid',
+      });
+      delete (request as { user?: unknown }).user;
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+      expect((request as { user?: { roles: RoleName[] } }).user).toBeUndefined();
+    });
+
+    it('conta sem segundo fator ativo é recusada mesmo com mfa no token', async () => {
+      sessaoDoPainel();
+      findUnique.mockResolvedValue({
+        status: UserStatus.ACTIVE,
+        roles: [{ role: { name: RoleName.ADMIN } }],
+        twoFactor: { enabled: false },
+        refreshSessions: [{ id: 'sid' }],
+      });
+      delete (request as { user?: unknown }).user;
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+      expect((request as { user?: { roles: RoleName[] } }).user).toBeUndefined();
+    });
   });
 });

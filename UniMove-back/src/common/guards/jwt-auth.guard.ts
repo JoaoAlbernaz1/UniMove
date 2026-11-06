@@ -131,14 +131,24 @@ export class JwtAuthGuard implements CanActivate {
     // A revoked role must stop working even if an old access token has not expired.
     // O token do aplicativo lista os papéis, e aí vale a interseção com o banco:
     // papel revogado cai na hora e um token antigo não ganha papel novo sem
-    // relogar. O token do painel não lista papéis — a sessão dele já exige ADMIN
-    // atual, MFA e sessão viva, conferidos logo acima — então valem os do banco.
+    // relogar.
+    //
+    // Só a sessão do painel pode partir dos papéis do banco, porque o token dela
+    // não lista papel nenhum. E só vale quando ela é inteira: veio por cookie
+    // (garantido pelo scope admin, conferido acima contra a origem do token),
+    // tem segundo fator no token e na conta, e a sessão continua viva no banco —
+    // sem isso a linha de cima já teria recusado. Token do aplicativo sem papéis
+    // fica sem papel algum: não herda nada da conta.
     const currentRoles = account.roles.map((item) => item.role.name);
+    const adminSessionAutenticada =
+      adminSession && payload.mfa === true && account.twoFactor?.enabled === true;
     request.user = {
       id: payload.sub,
       roles: Array.isArray(payload.roles)
         ? currentRoles.filter((name) => payload.roles!.includes(name))
-        : currentRoles,
+        : adminSessionAutenticada
+          ? currentRoles
+          : [],
       mfa: payload.mfa === true && account.twoFactor?.enabled === true,
     };
     return true;
