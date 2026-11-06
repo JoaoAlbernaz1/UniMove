@@ -1,5 +1,12 @@
 import { Prisma } from '../../generated/prisma/client';
 
+export function activePendingRequestWhere(passengerId: string, now: Date): Prisma.RideRequestWhereInput {
+  return {
+    passengerId, status: 'PENDING', expiresAt: { gt: now },
+    ride: { status: { in: ['OPEN', 'SCHEDULED'] }, departureAt: { gt: now } },
+  };
+}
+
 // available_seats stores seats left after confirmed reservations. Pending requests
 // hold seats only until expires_at; no scheduled job is needed to release them.
 export const availableSeatsSql = Prisma.sql`GREATEST(0, r.available_seats - COALESCE((

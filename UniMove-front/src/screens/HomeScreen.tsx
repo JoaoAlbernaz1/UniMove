@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Pressable,
   RefreshControl,
@@ -28,6 +29,7 @@ import { getVehicles } from '../api/vehicles';
 import { useAuth } from '../auth/AuthContext';
 import { Message } from '../components/Message';
 import { Button } from '../components/Button';
+import { NotificationDot } from '../components/NotificationDot';
 import {
   getIdentityVerificationStatus,
   type IdentityVerificationStatus,
@@ -93,6 +95,7 @@ export function HomeScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasVehicle, setHasVehicle] = useState<boolean | null>(null);
+  const [indicators, setIndicators] = useState({ hasPendingRideRequests: false, hasUnreadMessages: false });
   const [vehiclesError, setVehiclesError] = useState<string | null>(null);
   const [verificationPromptVisible, setVerificationPromptVisible] = useState(false);
   const [verificationCheckError, setVerificationCheckError] = useState<string | null>(null);
@@ -151,6 +154,19 @@ export function HomeScreen({
   useEffect(() => {
     void loadHome();
   }, [loadHome]);
+
+  const loadIndicators = useCallback(() => authApi<typeof indicators>('/users/me/indicators')
+    .then(setIndicators).catch(() => {}), [authApi]);
+  useEffect(() => {
+    void loadIndicators();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void loadIndicators();
+    }, 10000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadIndicators();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [loadIndicators]);
 
   async function enterRideFeature(destination: 'search' | 'offer') {
     if (checkingRideAccess) return;
@@ -211,6 +227,7 @@ export function HomeScreen({
             onRefresh={() => {
               setRefreshing(true);
               void loadHome();
+              void loadIndicators();
             }}
             tintColor={colors.accent}
             colors={[colors.accent]}
@@ -362,12 +379,13 @@ export function HomeScreen({
 
             <View style={styles.quickSection}>
               {hasVehicle ? <View style={styles.driverRequestsLink}>
-                <Button title="Pedidos de carona" variant="outline" onPress={() => onNavigateDriverRequests?.()} />
+                <Button title="Pedidos de carona" variant="outline" notificationDot={indicators.hasPendingRideRequests} onPress={() => onNavigateDriverRequests?.()} />
               </View> : null}
               <Text style={styles.sectionTitle}>Acesso rápido</Text>
               <View style={styles.quickGrid}>
                 <Pressable
                   onPress={onNavigateMessages}
+                  accessibilityLabel={indicators.hasUnreadMessages ? 'Mensagens. Há mensagens não lidas.' : 'Mensagens'}
                   style={({ pressed }) => [
                     styles.quickItem,
                     pressed && styles.pressed,
@@ -378,6 +396,7 @@ export function HomeScreen({
                     <MessageCircle size={19} color="#0EA5E9" />
                   </View>
                   <Text style={styles.quickLabel}>Mensagens</Text>
+                  {indicators.hasUnreadMessages ? <NotificationDot /> : null}
                 </Pressable>
                 <Pressable
                   onPress={onNavigateHistory}

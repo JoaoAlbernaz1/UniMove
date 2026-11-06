@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Car, LogOut, Pencil } from 'lucide-react-native';
 import { useAuth } from '../auth/AuthContext';
-import { getVehicles, type Vehicle } from '../api/vehicles';
+import { getVehicles, leaveDriver, type Vehicle } from '../api/vehicles';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Message } from '../components/Message';
@@ -35,7 +35,7 @@ export function ProfileScreen({
   onBack: () => void;
   onRegisterVehicle: () => void;
 }) {
-  const { authApi, signOut } = useAuth();
+  const { authApi, signOut, refreshSession } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +51,41 @@ export function ProfileScreen({
   const [isEditing, setIsEditing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [confirmingLeaveDriver, setConfirmingLeaveDriver] = useState(false);
+  const [leavingDriver, setLeavingDriver] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [leaveNotice, setLeaveNotice] = useState<string | null>(null);
+  const leavingRef = useRef(false);
+
+  async function confirmLeaveDriver() {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    setLeavingDriver(true);
+    setLeaveError(null);
+    try {
+      const result = await leaveDriver(authApi);
+      setVehicles([]);
+      setConfirmingLeaveDriver(false);
+      setLeaveNotice(result.message);
+      try {
+        await refreshSession();
+        setAttempt((value) => value + 1);
+      } catch {
+        setLeaveError(
+          'A alteração foi salva. Não foi possível atualizar sua sessão, mas a permissão de motorista já foi removida. Entre novamente para atualizar seu acesso de passageiro.',
+        );
+      }
+    } catch (cause) {
+      setLeaveError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível deixar de ser motorista. Tente novamente.',
+      );
+    } finally {
+      setLeavingDriver(false);
+      leavingRef.current = false;
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -217,10 +252,55 @@ export function ProfileScreen({
                     vehicles.length ? 'Editar carro' : 'Cadastre seu carro'
                   }
                   onPress={onRegisterVehicle}
-                  disabled={!!vehiclesError}
+                  disabled={!!vehiclesError || leavingDriver}
                   variant="outline"
                   icon={Car}
                 />
+                {vehicles.length > 0 && !vehiclesError ? (
+                  confirmingLeaveDriver ? (
+                    <Card style={styles.leaveConfirmation}>
+                      <Text style={styles.sectionTitle}>
+                        Deixar de ser motorista?
+                      </Text>
+                      <Text style={styles.aboutText}>
+                        Seus carros serão desativados e suas rotas recorrentes
+                        serão encerradas. Você continuará como passageiro, com
+                        seu histórico preservado. Cancele ou conclua suas
+                        caronas abertas antes de confirmar.
+                      </Text>
+                      <Button
+                        title="Confirmar saída como motorista"
+                        onPress={() => void confirmLeaveDriver()}
+                        loading={leavingDriver}
+                      />
+                      <Button
+                        title="Cancelar"
+                        variant="outline"
+                        disabled={leavingDriver}
+                        onPress={() => {
+                          setConfirmingLeaveDriver(false);
+                          setLeaveError(null);
+                        }}
+                      />
+                    </Card>
+                  ) : (
+                    <Button
+                      title="Deixar de ser motorista"
+                      variant="destructive-outline"
+                      onPress={() => {
+                        setConfirmingLeaveDriver(true);
+                        setLeaveError(null);
+                        setLeaveNotice(null);
+                      }}
+                    />
+                  )
+                ) : null}
+                {leaveError ? (
+                  <Message tone="error">{leaveError}</Message>
+                ) : null}
+                {leaveNotice ? (
+                  <Message tone="success">{leaveNotice}</Message>
+                ) : null}
                 {vehiclesError ? (
                   <Message tone="error">{vehiclesError}</Message>
                 ) : null}
@@ -265,6 +345,7 @@ export function ProfileScreen({
 }
 
 const styles = StyleSheet.create({
+  leaveConfirmation: { padding: 18, gap: 14 },
   safe: { flex: 1, backgroundColor: colors.background },
   header: { backgroundColor: colors.primary, width: '100%', paddingBottom: 24 },
   headerBar: {

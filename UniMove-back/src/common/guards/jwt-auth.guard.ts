@@ -52,11 +52,12 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Token de acesso inválido ou expirado.');
     const account = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { status: true },
+      select: { status: true, roles: { select: { role: { select: { name: true } } } } },
     });
     if (account?.status !== UserStatus.ACTIVE)
       throw new UnauthorizedException('Conta indisponível para acesso.');
-    request.user = { id: payload.sub, roles: payload.roles };
+    // A revoked role must stop working even if an old access token has not expired.
+    request.user = { id: payload.sub, roles: payload.roles.filter((name) => account.roles.some(({ role }) => role.name === name)) };
     return true;
   }
 }

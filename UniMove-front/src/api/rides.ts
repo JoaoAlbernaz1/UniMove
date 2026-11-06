@@ -47,6 +47,7 @@ export type RideDetails = {
   destinationLocation: RideLocation;
   request: RideRequest | null;
   canRequest: boolean;
+  hasPendingRequest: boolean;
   isDriver: boolean;
 };
 

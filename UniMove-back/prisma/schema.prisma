@@ -383,10 +383,12 @@ model ChatMessage {
   senderId       String              @map("sender_id") @db.Uuid
   content        String              @db.VarChar(2000)
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  readAt         DateTime?           @map("read_at") @db.Timestamptz(3)
   conversation   MessageConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User                @relation(fields: [senderId], references: [id], onDelete: Restrict)
 
   @@index([conversationId, createdAt, id])
+  @@index([conversationId, readAt])
   @@map("chat_messages")
 }
 

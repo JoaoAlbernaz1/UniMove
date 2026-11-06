@@ -30,6 +30,7 @@ describe('Ride booking', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       rideRequest: {
+        findFirst: jest.fn().mockResolvedValue(null),
         aggregate: jest.fn().mockResolvedValue({ _sum: { seatsRequested: 1 } }),
         create: jest.fn().mockResolvedValue({ id: 'request', status: 'PENDING' }),
       },
@@ -88,6 +89,17 @@ describe('Ride booking', () => {
     expect(tx.rideRequest.create).not.toHaveBeenCalled();
   });
 
+  it('blocks a new request even at another time while one is pending', async () => {
+    const { controller, tx } = setup();
+    tx.rideRequest.findFirst.mockResolvedValue({ id: 'pending-other-time' } as never);
+    await expect(controller.request(passenger, 'ride', { seats: 1 })).rejects.toThrow('aguardando o motorista');
+    expect(tx.rideRequest.create).not.toHaveBeenCalled();
+    expect(tx.rideRequest.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      passengerId: passenger.id, status: 'PENDING', expiresAt: { gt: expect.any(Date) },
+      ride: expect.objectContaining({ departureAt: { gt: expect.any(Date) } }),
+    }) }));
+  });
+
   it.each(['CANCELLED', 'COMPLETED', 'IN_PROGRESS'])('rejects a %s ride', async (status) => {
     const { controller, ride } = setup();
     ride.status = status;
@@ -119,6 +131,7 @@ describe('Ride booking', () => {
 
   it('reports an expired request without waiting for the driver to open their inbox', async () => {
     const prisma = {
+      rideRequest: { findFirst: jest.fn().mockResolvedValue(null) },
       ride: {
         findUnique: jest
           .fn()
@@ -139,5 +152,17 @@ describe('Ride booking', () => {
     expect(details.request?.status).toBe('EXPIRED');
     expect(details.canRequest).toBe(true);
     expect(details).not.toHaveProperty('requests');
+  });
+
+  it('hides the request action on other ride details while waiting', async () => {
+    const prisma = {
+      ride: { findUnique: jest.fn().mockResolvedValue({ id: 'other-ride', driverId: 'driver', status: 'OPEN', departureAt: future(), requests: [] }) },
+      rideRequest: { findFirst: jest.fn().mockResolvedValue({ id: 'pending-request' }) },
+      $queryRaw: jest.fn().mockResolvedValue([{ availableSeats: 2 }]),
+    };
+    const details = await new RideQueriesService(prisma as unknown as PrismaService).details('other-ride', passenger.id);
+    expect(details.hasPendingRequest).toBe(true);
+    expect(details.canRequest).toBe(false);
+    expect(details.availableSeats).toBe(2);
   });
 });

@@ -34,19 +34,25 @@ describe('JwtAuthGuard', () => {
       roles: [RoleName.PASSENGER],
       type: 'access',
     });
-    findUnique.mockResolvedValue({ status: UserStatus.ACTIVE });
+    findUnique.mockResolvedValue({ status: UserStatus.ACTIVE, roles: [{ role: { name: RoleName.PASSENGER } }] });
   });
 
   it('confirma que a conta continua ativa antes de aceitar o token', async () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(findUnique).toHaveBeenCalledWith({
       where: { id: 'user-id' },
-      select: { status: true },
+      select: { status: true, roles: { select: { role: { select: { name: true } } } } },
     });
     expect(request).toHaveProperty('user', {
       id: 'user-id',
       roles: [RoleName.PASSENGER],
     });
+  });
+
+  it('revoga o papel de motorista mesmo com um token antigo ainda válido', async () => {
+    verifyAsync.mockResolvedValue({ sub: 'user-id', roles: [RoleName.DRIVER, RoleName.PASSENGER], type: 'access' });
+    await guard.canActivate(context);
+    expect(request).toHaveProperty('user.roles', [RoleName.PASSENGER]);
   });
 
   it('invalida imediatamente tokens de contas desativadas', async () => {

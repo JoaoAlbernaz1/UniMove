@@ -3,7 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { ReservationStatus, RideStatus } from '../../generated/prisma/enums';
 import { SearchRidesDto } from './search-rides.dto';
-import { availableSeatsSql } from './ride-availability';
+import { activePendingRequestWhere, availableSeatsSql } from './ride-availability';
 
 const rideInclude = {
   driver: { select: { id: true, fullName: true } },
@@ -24,12 +24,18 @@ function normalized(value = '') {
 export class RideQueriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(query: SearchRidesDto) {
+  async search(query: SearchRidesDto, userId?: string) {
     this.validateDate(query.date);
+    const pending = userId ? await this.prisma.rideRequest.findMany({
+      where: activePendingRequestWhere(userId, new Date()), select: { rideId: true },
+    }) : [];
+    const pendingRideIds = new Set(pending.map(({ rideId }) => rideId));
     const conditions: Prisma.Sql[] = [
       Prisma.sql`r.status IN ('OPEN', 'SCHEDULED')`,
       Prisma.sql`r.departure_at > NOW()`,
-      Prisma.sql`${availableSeatsSql} > 0`,
+      pending.length
+        ? Prisma.sql`(${availableSeatsSql} > 0 OR r.id IN (${Prisma.join(pending.map(({ rideId }) => Prisma.sql`${rideId}::uuid`))}))`
+        : Prisma.sql`${availableSeatsSql} > 0`,
       Prisma.sql`(
         EXISTS (
           SELECT 1
@@ -93,6 +99,8 @@ export class RideQueriesService {
       items: rides.map((ride) => ({
         ...ride,
         availableSeats: ids.find(({ id }) => id === ride.id)!.availableSeats,
+        requestStatus: pendingRideIds.has(ride.id) ? 'PENDING' : null,
+        canRequest: pending.length === 0 && ride.driverId !== userId && ids.find(({ id }) => id === ride.id)!.availableSeats > 0,
         driver: {
           ...ride.driver,
           ratingAverage: byDriver.get(ride.driverId)?._avg.score ?? null,
@@ -100,6 +108,7 @@ export class RideQueriesService {
         },
       })),
       total: counts[0]?.total ?? 0,
+      hasPendingRequest: pending.length > 0,
       page: query.page,
       limit: query.limit,
     };
@@ -129,6 +138,9 @@ export class RideQueriesService {
     });
     if (!ride) throw new NotFoundException('Carona não encontrada.');
     const now = new Date();
+    const pendingRequest = await this.prisma.rideRequest.findFirst({
+      where: activePendingRequestWhere(userId, now), select: { id: true },
+    });
     const availability = await this.prisma.$queryRaw<
       { availableSeats: number }[]
     >(
@@ -155,8 +167,10 @@ export class RideQueriesService {
       ...details,
       availableSeats,
       request,
+      hasPendingRequest: !!pendingRequest,
       canRequest:
         !blocked &&
+        !pendingRequest &&
         ride.driverId !== userId &&
         ride.departureAt > now &&
         ['OPEN', 'SCHEDULED'].includes(ride.status) &&

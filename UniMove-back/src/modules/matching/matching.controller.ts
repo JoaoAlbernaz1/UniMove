@@ -40,6 +40,7 @@ export class MatchingController {
     const routes = await this.prisma.routeTemplate.findMany({
       where: {
         active: true,
+        vehicle: { active: true },
         driver: {
           driverLicense: { isNot: null },
           OR: [
@@ -58,8 +59,11 @@ export class MatchingController {
       (route) => Math.abs(this.minutes(route.departureTime) - desiredMinutes) <= tolerance,
     );
     const rides = await Promise.all(
-      compatible.map((route) =>
-        this.prisma.ride.upsert({
+      compatible.map((route) => this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${route.driverId}::uuid FOR UPDATE`;
+        const current = await tx.routeTemplate.findFirst({ where: { id: route.id, active: true, vehicle: { active: true } } });
+        if (!current) return null;
+        return tx.ride.upsert({
           where: {
             routeTemplateId_departureAt: {
               routeTemplateId: route.id,
@@ -83,11 +87,12 @@ export class MatchingController {
             originLocation: true,
             destinationLocation: true,
           },
-        }),
+        });
+      }),
       ),
     );
     const now = new Date();
-    const available = await Promise.all(rides.map(async (ride) => ({
+    const available = await Promise.all(rides.filter((ride) => ride !== null).map(async (ride) => ({
       ...ride,
       availableSeats: Math.max(0, ride.availableSeats - await heldSeats(this.prisma, ride.id, now)),
     })));

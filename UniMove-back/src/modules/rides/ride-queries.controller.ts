@@ -10,8 +10,8 @@ export class RideQueriesController {
   constructor(private readonly queries: RideQueriesService) {}
   @Get()
   @RequireAcademicVerification()
-  search(@Query() query: SearchRidesDto) {
-    return this.queries.search(query);
+  search(@Query() query: SearchRidesDto, @CurrentUser() user: AuthUser) {
+    return this.queries.search(query, user.id);
   }
   @Get('upcoming') upcoming(@CurrentUser() user: AuthUser) {
     return this.queries.upcoming(user.id);

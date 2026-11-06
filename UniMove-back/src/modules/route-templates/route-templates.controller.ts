@@ -49,8 +49,10 @@ export class RouteTemplatesController {
   @Post()
   @RequireAcademicVerification()
   async create(@CurrentUser() user: AuthUser, @Body() dto: CreateRouteTemplateDto) {
+    return this.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
     if (
-      !(await this.prisma.driverLicense.findUnique({
+      !(await tx.driverLicense.findUnique({
         where: { userId: user.id },
         select: { userId: true },
       }))
@@ -58,12 +60,12 @@ export class RouteTemplatesController {
       throw new BadRequestException(
         'Envie a foto da CNH na edição do carro antes de oferecer carona.',
       );
-    const vehicle = await this.prisma.vehicle.findFirst({
+    const vehicle = await tx.vehicle.findFirst({
       where: { id: dto.vehicleId, ownerId: user.id, active: true },
     });
     if (!vehicle || dto.availableSeats > vehicle.passengerCapacity)
       throw new NotFoundException('Veículo inválido ou capacidade excedida.');
-    return this.prisma.routeTemplate.create({
+    return tx.routeTemplate.create({
       data: {
         driverId: user.id,
         vehicleId: dto.vehicleId,
@@ -75,6 +77,7 @@ export class RouteTemplatesController {
         weekdays: { create: [...new Set(dto.weekdays)].map((weekday) => ({ weekday })) },
       },
       include: { weekdays: true, originLocation: true, destinationLocation: true },
+    });
     });
   }
   @Get() list(@CurrentUser() user: AuthUser) {
@@ -91,8 +94,12 @@ export class RouteTemplatesController {
     @Param('id') id: string,
     @Body() dto: UpdateRouteTemplateDto,
   ) {
-    await this.owned(user.id, id);
-    return this.prisma.routeTemplate.update({ where: { id }, data: dto });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
+      const route = await tx.routeTemplate.findFirst({ where: { id, driverId: user.id, vehicle: { active: true } } });
+      if (!route) throw new NotFoundException('Rota não encontrada ou veículo desativado.');
+      return tx.routeTemplate.update({ where: { id }, data: dto });
+    });
   }
   @Delete(':id') @HttpCode(204) async remove(
     @CurrentUser() user: AuthUser,

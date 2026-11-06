@@ -224,6 +224,20 @@ export class ChatService {
     await this.getAuthorizedConversation(userId, conversationId);
   }
 
+  async markRead(userId: string, conversationId: string, throughMessageId: string) {
+    await this.getAuthorizedConversation(userId, conversationId);
+    const cursor = await this.prisma.chatMessage.findFirst({
+      where: { id: throughMessageId, conversationId }, select: { id: true, createdAt: true },
+    });
+    if (!cursor) throw new NotFoundException('Mensagem não encontrada nesta conversa.');
+    // Only messages delivered up to the displayed cursor are read. New arrivals
+    // stay unread, and a sender cannot mark their own message read for the recipient.
+    return this.prisma.chatMessage.updateMany({ where: {
+      conversationId, senderId: { not: userId }, readAt: null,
+      OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lte: cursor.id } }],
+    }, data: { readAt: new Date() } });
+  }
+
   async sendMessage(userId: string, conversationId: string, content: string) {
     const conversation = await this.getAuthorizedConversation(userId, conversationId);
     if (conversation.reservationStatus !== ReservationStatus.CONFIRMED) {

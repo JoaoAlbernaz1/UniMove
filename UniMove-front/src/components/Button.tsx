@@ -1,14 +1,16 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { colors, fonts, radius } from '../theme';
+import { NotificationDot } from './NotificationDot';
 
 type Props = {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'outline' | 'accent';
+  variant?: 'primary' | 'outline' | 'accent' | 'destructive-outline';
   icon?: LucideIcon;
   loading?: boolean;
   disabled?: boolean;
+  notificationDot?: boolean;
 };
 
 export function Button({
@@ -18,9 +20,12 @@ export function Button({
   icon: Icon,
   loading,
   disabled,
+  notificationDot = false,
 }: Props) {
-  const primary = variant !== 'outline';
+  const destructive = variant === 'destructive-outline';
+  const primary = variant !== 'outline' && !destructive;
   const inactive = loading || disabled;
+  const contentColor = destructive ? colors.destructive : primary ? colors.white : colors.accent;
 
   return (
     <Pressable
@@ -33,25 +38,27 @@ export function Button({
             : styles.outline,
         pressed && styles.pressed,
         inactive && styles.inactive,
+        destructive && !primary && styles.destructiveOutline,
       ]}
       onPress={onPress}
       disabled={inactive}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={notificationDot ? `${title}. Há novidades pendentes.` : title}
       accessibilityState={{ busy: !!loading, disabled: !!inactive }}
     >
       {loading ? (
-        <ActivityIndicator color={primary ? colors.white : colors.accent} />
+        <ActivityIndicator color={contentColor} />
       ) : (
         <>
-          <Text style={primary ? styles.primaryText : styles.outlineText}>
+          <Text style={[primary ? styles.primaryText : styles.outlineText, destructive && styles.destructiveText]}>
             {title}
           </Text>
           {Icon ? (
-            <Icon size={20} color={primary ? colors.white : colors.accent} />
+            <Icon size={20} color={contentColor} />
           ) : null}
         </>
       )}
+      {notificationDot ? <NotificationDot /> : null}
     </Pressable>
   );
 }
@@ -69,6 +76,8 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: colors.primary },
   accent: { backgroundColor: colors.accent },
   outline: { borderWidth: 2, borderColor: colors.accent },
+  destructiveOutline: { borderColor: colors.destructive },
+  destructiveText: { color: colors.destructive },
   pressed: { opacity: 0.85 },
   inactive: { opacity: 0.5 },
   primaryText: {

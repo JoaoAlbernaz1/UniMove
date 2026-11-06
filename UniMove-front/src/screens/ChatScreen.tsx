@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Pressable,
   StyleSheet,
@@ -62,6 +63,7 @@ export function ChatScreen({
   const hasLoadedHistoryRef = useRef(false);
   const syncingMessagesRef = useRef(false);
   const syncRequestedRef = useRef(false);
+  const lastReadMessageRef = useRef<string | null>(null);
   const other =
     conversation.passengerId === userId
       ? conversation.ride.driver
@@ -113,6 +115,26 @@ export function ChatScreen({
       setLoading(false);
     }
   }, [addMessages, authApi, conversation.id]);
+
+  const markRead = useCallback(() => {
+    if (AppState.currentState !== 'active') return;
+    const message = messagesRef.current.filter((item) => item.senderId !== userId).at(-1);
+    if (!message || lastReadMessageRef.current === message.id) return;
+    lastReadMessageRef.current = message.id;
+    void authApi(`/messages/conversations/${conversation.id}/read`, {
+      method: 'POST', body: JSON.stringify({ throughMessageId: message.id }),
+    }).catch(() => {
+      if (lastReadMessageRef.current === message.id) lastReadMessageRef.current = null;
+    });
+  }, [authApi, conversation.id, userId]);
+
+  useEffect(() => { markRead(); }, [markRead, messages]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') markRead();
+    });
+    return () => subscription.remove();
+  }, [markRead]);
 
   useEffect(() => {
     let active = true;

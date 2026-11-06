@@ -14,6 +14,7 @@ describe('Publicação de carona avulsa', () => {
   const routeCreate = jest.fn();
   const rideCreate = jest.fn();
   const tx = {
+    $queryRaw: jest.fn(),
     driverLicense: { findUnique: jest.fn() },
     vehicle: { findFirst: vehicleFind },
     location: { count: locationCount },

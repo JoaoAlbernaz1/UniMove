@@ -257,7 +257,9 @@ export function RideDetailsScreen({
               <Text style={styles.body}>
                 {ride.isDriver
                   ? 'Esta carona foi publicada por você.'
-                  : 'Esta carona não está disponível para novas solicitações.'}
+                  : ride.hasPendingRequest
+                    ? 'Você já tem uma solicitação aguardando o motorista. Aguarde a resposta ou a expiração antes de solicitar outra carona.'
+                    : 'Esta carona não está disponível para novas solicitações.'}
               </Text>
             ) : null}
             <Button

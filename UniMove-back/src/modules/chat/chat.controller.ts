@@ -17,6 +17,10 @@ class MessageQueryDto {
   after?: string;
 }
 
+class ReadMessagesDto {
+  @IsUUID() throughMessageId!: string;
+}
+
 @ApiTags('chat')
 @ApiBearerAuth()
 @Controller('messages')
@@ -40,6 +44,10 @@ export class ChatController {
     @Query() query: MessageQueryDto,
   ) {
     return this.chat.listMessages(user.id, id, query.after);
+  }
+  @Post('conversations/:id/read')
+  markRead(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReadMessagesDto) {
+    return this.chat.markRead(user.id, id, body.throughMessageId);
   }
 }
 
