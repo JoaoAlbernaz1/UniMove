@@ -1,8 +1,13 @@
 import { Prisma } from '../../generated/prisma/client';
 
-export function activePendingRequestWhere(passengerId: string, now: Date): Prisma.RideRequestWhereInput {
+export function activePendingRequestWhere(
+  passengerId: string,
+  now: Date,
+): Prisma.RideRequestWhereInput {
   return {
-    passengerId, status: 'PENDING', expiresAt: { gt: now },
+    passengerId,
+    status: 'PENDING',
+    expiresAt: { gt: now },
     ride: { status: { in: ['OPEN', 'SCHEDULED'] }, departureAt: { gt: now } },
   };
 }

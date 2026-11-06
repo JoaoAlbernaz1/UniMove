@@ -60,24 +60,38 @@ describe('ChatService', () => {
     const createdAt = new Date('2026-11-05T12:00:00Z');
     messageFindFirst.mockResolvedValue({ id: 'cursor-id', createdAt });
     messageUpdateMany.mockResolvedValue({ count: 1 });
-    await expect(service.markRead(passengerId, conversationId, 'cursor-id')).resolves.toEqual({ count: 1 });
-    expect(messageUpdateMany).toHaveBeenCalledWith({ where: {
-      conversationId, senderId: { not: passengerId }, readAt: null,
-      OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lte: 'cursor-id' } }],
-    }, data: { readAt: expect.any(Date) } });
+    await expect(service.markRead(passengerId, conversationId, 'cursor-id')).resolves.toEqual({
+      count: 1,
+    });
+    expect(messageUpdateMany).toHaveBeenCalledWith({
+      where: {
+        conversationId,
+        senderId: { not: passengerId },
+        readAt: null,
+        OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lte: 'cursor-id' } }],
+      },
+      data: { readAt: expect.any(Date) },
+    });
   });
 
   it('does not let an outsider mark a conversation as read', async () => {
     authorize();
-    await expect(service.markRead('outsider', conversationId, 'cursor-id')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.markRead('outsider', conversationId, 'cursor-id')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(messageUpdateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a read cursor from another conversation', async () => {
     authorize();
     messageFindFirst.mockResolvedValue(null);
-    await expect(service.markRead(passengerId, conversationId, 'foreign-message')).rejects.toBeInstanceOf(NotFoundException);
-    expect(messageFindFirst).toHaveBeenCalledWith({ where: { id: 'foreign-message', conversationId }, select: { id: true, createdAt: true } });
+    await expect(
+      service.markRead(passengerId, conversationId, 'foreign-message'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(messageFindFirst).toHaveBeenCalledWith({
+      where: { id: 'foreign-message', conversationId },
+      select: { id: true, createdAt: true },
+    });
     expect(messageUpdateMany).not.toHaveBeenCalled();
   });
 
