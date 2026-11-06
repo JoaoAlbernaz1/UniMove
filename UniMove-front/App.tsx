@@ -7,7 +7,6 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -174,10 +173,17 @@ function SignedInApp() {
   const [userId, setUserId] = useState<string | null>(null);
   const [profileUserId, setProfileUserId] = useState<string>('');
   const [vehicleReturnScreen, setVehicleReturnScreen] = useState<'Home' | 'Profile'>('Profile');
+  const [checkingVehicleOffer, setCheckingVehicleOffer] = useState(false);
+  const [vehicleOfferError, setVehicleOfferError] = useState<string | null>(null);
+  const [vehicleNeedsVerification, setVehicleNeedsVerification] = useState(false);
   const [openVerificationOnPersonalInfo, setOpenVerificationOnPersonalInfo] =
     useState(false);
 
   async function offerRideFromVehicle() {
+    if (checkingVehicleOffer) return;
+    setCheckingVehicleOffer(true);
+    setVehicleOfferError(null);
+    setVehicleNeedsVerification(false);
     try {
       const currentUser = await authApi<Me>('/users/me');
       const isAdmin = currentUser.roles?.some(
@@ -189,44 +195,26 @@ function SignedInApp() {
           const isPending =
             verification.academic?.status === 'PENDING_REVIEW';
           const isRejected = verification.academic?.status === 'REJECTED';
-          Alert.alert(
-            isPending
-              ? 'Validação em análise'
-              : 'Validação cadastral necessária',
+          setVehicleNeedsVerification(true);
+          setVehicleOfferError(
             isPending
               ? 'Seu comprovante já foi enviado e está em análise pela equipe UniMove. Aguarde a conclusão da revisão; não é necessário enviar o documento novamente.'
               : isRejected
                 ? 'Sua validação foi rejeitada. Consulte o motivo e envie um novo comprovante para voltar a oferecer caronas.'
                 : 'Para oferecer caronas, envie seu comprovante de matrícula e aguarde a revisão da equipe UniMove.',
-            [
-              {
-                text: isPending ? 'Cancelar' : 'Agora não',
-                style: 'cancel',
-              },
-              {
-                text: isPending
-                  ? 'Acompanhar andamento'
-                  : isRejected
-                    ? 'Corrigir validação'
-                    : 'Ir para validação',
-                onPress: () => {
-                  setOpenVerificationOnPersonalInfo(true);
-                  setLoggedScreen('PersonalInfo');
-                },
-              },
-            ],
           );
           return;
         }
       }
       setLoggedScreen('OfferRide');
     } catch (reason) {
-      Alert.alert(
-        'Não foi possível verificar seu cadastro',
+      setVehicleOfferError(
         reason instanceof Error
           ? reason.message
           : 'Tente novamente em instantes.',
       );
+    } finally {
+      setCheckingVehicleOffer(false);
     }
   }
 
@@ -266,6 +254,8 @@ function SignedInApp() {
           userId={profileUserId}
           onBack={() => setLoggedScreen('Home')}
           onRegisterVehicle={() => {
+            setVehicleOfferError(null);
+            setVehicleNeedsVerification(false);
             setVehicleReturnScreen('Profile');
             setLoggedScreen('RegisterVehicle');
           }}
@@ -276,6 +266,13 @@ function SignedInApp() {
         <RegisterVehicleScreen
           onBack={() => setLoggedScreen(vehicleReturnScreen)}
           onOfferRide={() => void offerRideFromVehicle()}
+          checkingOffer={checkingVehicleOffer}
+          offerError={vehicleOfferError}
+          needsVerification={vehicleNeedsVerification}
+          onVerify={() => {
+            setOpenVerificationOnPersonalInfo(true);
+            setLoggedScreen('PersonalInfo');
+          }}
         />
       );
     if (loggedScreen === 'Settings')
@@ -321,6 +318,8 @@ function SignedInApp() {
         onNavigateOffer={() => setLoggedScreen('OfferRide')}
         onNavigateDriverRequests={() => setLoggedScreen('DriverRequests')}
         onRegisterVehicle={() => {
+          setVehicleOfferError(null);
+          setVehicleNeedsVerification(false);
           setVehicleReturnScreen('Home');
           setLoggedScreen('RegisterVehicle');
         }}

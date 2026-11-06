@@ -23,7 +23,7 @@ import {
   RideStatus,
 } from '../../generated/prisma/enums';
 import { NotificationService } from '../notifications/notifications.service';
-import { heldSeats } from './ride-availability';
+import { activePendingRequestWhere, heldSeats } from './ride-availability';
 
 export class RequestRideDto {
   @IsInt()
@@ -69,6 +69,14 @@ export class RidesController {
         throw new ConflictException('Carona não está aberta para solicitações.');
       if (ride.driverId === user.id)
         throw new ConflictException('Motorista não pode solicitar a própria carona.');
+      const pendingRequest = await tx.rideRequest.findFirst({
+        where: activePendingRequestWhere(user.id, now),
+        select: { id: true },
+      });
+      if (pendingRequest)
+        throw new ConflictException(
+          'Você já tem uma solicitação aguardando o motorista. Aguarde a resposta ou a expiração antes de solicitar outra carona.',
+        );
       const minuteStart = new Date(Math.floor(ride.departureAt.getTime() / 60000) * 60000);
       const departureAt = {
         gte: minuteStart,

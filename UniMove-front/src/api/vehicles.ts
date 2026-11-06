@@ -73,6 +73,10 @@ export function getVehicles(authApi: AuthApi) {
   return authApi<Vehicle[]>('/vehicles');
 }
 
+export function leaveDriver(authApi: AuthApi) {
+  return authApi<{ message: string }>('/vehicles/leave-driver', { method: 'POST' });
+}
+
 export function updateVehicle(
   authApi: AuthApi,
   id: string,

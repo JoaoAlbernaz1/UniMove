@@ -40,6 +40,7 @@ export class MatchingController {
     const routes = await this.prisma.routeTemplate.findMany({
       where: {
         active: true,
+        vehicle: { active: true },
         driver: {
           status: UserStatus.ACTIVE,
           driverLicense: { isNot: null },
@@ -60,42 +61,51 @@ export class MatchingController {
     );
     const rides = await Promise.all(
       compatible.map((route) =>
-        this.prisma.ride.upsert({
-          where: {
-            routeTemplateId_departureAt: {
-              routeTemplateId: route.id,
-              departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+        this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM users WHERE id = ${route.driverId}::uuid FOR UPDATE`;
+          const current = await tx.routeTemplate.findFirst({
+            where: { id: route.id, active: true, vehicle: { active: true } },
+          });
+          if (!current) return null;
+          return tx.ride.upsert({
+            where: {
+              routeTemplateId_departureAt: {
+                routeTemplateId: route.id,
+                departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+              },
             },
-          },
-          update: {},
-          create: {
-            routeTemplateId: route.id,
-            driverId: route.driverId,
-            vehicleId: route.vehicleId,
-            originLocationId: route.originLocationId,
-            destinationLocationId: route.destinationLocationId,
-            departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
-            totalSeats: route.availableSeats,
-            availableSeats: route.availableSeats,
-          },
-          include: {
-            driver: { select: { id: true, fullName: true } },
-            vehicle: true,
-            originLocation: true,
-            destinationLocation: true,
-          },
+            update: {},
+            create: {
+              routeTemplateId: route.id,
+              driverId: route.driverId,
+              vehicleId: route.vehicleId,
+              originLocationId: route.originLocationId,
+              destinationLocationId: route.destinationLocationId,
+              departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+              totalSeats: route.availableSeats,
+              availableSeats: route.availableSeats,
+            },
+            include: {
+              driver: { select: { id: true, fullName: true } },
+              vehicle: true,
+              originLocation: true,
+              destinationLocation: true,
+            },
+          });
         }),
       ),
     );
     const now = new Date();
     const available = await Promise.all(
-      rides.map(async (ride) => ({
-        ...ride,
-        availableSeats: Math.max(
-          0,
-          ride.availableSeats - (await heldSeats(this.prisma, ride.id, now)),
-        ),
-      })),
+      rides
+        .filter((ride) => ride !== null)
+        .map(async (ride) => ({
+          ...ride,
+          availableSeats: Math.max(
+            0,
+            ride.availableSeats - (await heldSeats(this.prisma, ride.id, now)),
+          ),
+        })),
     );
     return available
       .filter(

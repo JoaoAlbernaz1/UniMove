@@ -4,8 +4,9 @@ import { AchievementsService } from './achievements.service';
 import { ProfilePhotoService } from './profile-photo.service';
 import { AccountDeletionService } from './account-deletion.service';
 import { SettingsController } from './settings.controller';
+import { HomeIndicatorsController, HomeIndicatorsService } from './home-indicators.controller';
 @Module({
-  controllers: [UsersController, SettingsController],
-  providers: [AchievementsService, ProfilePhotoService, AccountDeletionService],
+  controllers: [UsersController, SettingsController, HomeIndicatorsController],
+  providers: [AchievementsService, ProfilePhotoService, AccountDeletionService, HomeIndicatorsService],
 })
 export class UsersModule {}

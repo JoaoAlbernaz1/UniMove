@@ -38,9 +38,17 @@ import {
 export function RegisterVehicleScreen({
   onBack,
   onOfferRide,
+  checkingOffer = false,
+  offerError,
+  needsVerification = false,
+  onVerify,
 }: {
   onBack: () => void;
   onOfferRide: () => void;
+  checkingOffer?: boolean;
+  offerError?: string | null;
+  needsVerification?: boolean;
+  onVerify?: () => void;
 }) {
   const { authApi, refreshSession } = useAuth();
   const [policy, setPolicy] = useState<VehicleRegistrationPolicy | null>(null);
@@ -256,11 +264,16 @@ export function RegisterVehicleScreen({
                   <Text style={styles.description}>
                     {editingVehicle
                       ? 'As alterações do seu carro foram salvas.'
-                      : 'Você agora pode oferecer caronas e continuar buscando caronas com a mesma conta.'}
+                      : 'Seu carro está cadastrado na mesma conta. Para publicar caronas, sua validação acadêmica também precisa estar aprovada.'}
                   </Text>
+                  {offerError ? <Message tone="error">{offerError}</Message> : null}
+                  {needsVerification && onVerify ? (
+                    <Button title="Ver validação cadastral" onPress={onVerify} variant="outline" />
+                  ) : null}
                   <Button
-                    title="Oferecer carona"
+                    title={offerError ? 'Tentar oferecer carona novamente' : 'Oferecer carona'}
                     onPress={onOfferRide}
+                    loading={checkingOffer}
                     variant="accent"
                     icon={Car}
                   />

@@ -14,6 +14,7 @@ export class OfferRidesService {
       throw new BadRequestException('A origem e o destino devem ser diferentes.');
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${driverId}::uuid FOR UPDATE`;
       if (
         !(await tx.driverLicense.findUnique({
           where: { userId: driverId },

@@ -23,6 +23,9 @@ import { PrismaService } from '../../database/prisma.service';
 interface AccessPayload {
   sub: string;
   type: 'access';
+  // O token do aplicativo lista os papéis; o do painel não, porque a sessão
+  // administrativa confere ADMIN, MFA e sessão viva no banco a cada requisição.
+  roles?: RoleName[];
   mfa?: boolean;
   scope?: 'admin';
   sid?: string;
@@ -125,9 +128,17 @@ export class JwtAuthGuard implements CanActivate {
         message: 'O acesso administrativo exige perfil ADMIN atual e segundo fator confirmado.',
       });
 
+    // A revoked role must stop working even if an old access token has not expired.
+    // O token do aplicativo lista os papéis, e aí vale a interseção com o banco:
+    // papel revogado cai na hora e um token antigo não ganha papel novo sem
+    // relogar. O token do painel não lista papéis — a sessão dele já exige ADMIN
+    // atual, MFA e sessão viva, conferidos logo acima — então valem os do banco.
+    const currentRoles = account.roles.map((item) => item.role.name);
     request.user = {
       id: payload.sub,
-      roles: account.roles.map((item) => item.role.name),
+      roles: Array.isArray(payload.roles)
+        ? currentRoles.filter((name) => payload.roles!.includes(name))
+        : currentRoles,
       mfa: payload.mfa === true && account.twoFactor?.enabled === true,
     };
     return true;

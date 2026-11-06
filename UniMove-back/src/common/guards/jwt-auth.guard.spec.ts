@@ -48,9 +48,11 @@ describe('JwtAuthGuard', () => {
     Reflect.defineMetadata(PATH_METADATA, '', handler);
     Reflect.defineMetadata(METHOD_METADATA, RequestMethod.GET, handler);
     getAllAndOverride.mockReturnValue(false);
+    // Token do aplicativo: lista papéis. O do painel não lista, e é exercitado
+    // nos casos de rota administrativa mais abaixo.
     verifyAsync.mockResolvedValue({
       sub: 'user-id',
-      roles: [RoleName.ADMIN],
+      roles: [RoleName.ADMIN, RoleName.PASSENGER],
       type: 'access',
     });
     findUnique.mockResolvedValue({
@@ -62,6 +64,14 @@ describe('JwtAuthGuard', () => {
 
   it('confirma que a conta continua ativa antes de aceitar o token', async () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: 'user-id' },
+      select: {
+        status: true,
+        roles: { select: { role: { select: { name: true } } } },
+        twoFactor: { select: { enabled: true } },
+      },
+    });
     expect(request).toHaveProperty('user', {
       id: 'user-id',
       roles: [RoleName.PASSENGER],
@@ -69,9 +79,25 @@ describe('JwtAuthGuard', () => {
     });
   });
 
-  it('autoriza pelas roles do banco, não pelas gravadas no token', async () => {
+  it('revoga o papel de motorista mesmo com um token antigo ainda válido', async () => {
+    verifyAsync.mockResolvedValue({
+      sub: 'user-id',
+      roles: [RoleName.DRIVER, RoleName.PASSENGER],
+      type: 'access',
+    });
     await guard.canActivate(context);
     expect(request).toHaveProperty('user.roles', [RoleName.PASSENGER]);
+  });
+
+  it('usa os papéis do banco quando o token não lista nenhum, como o do painel', async () => {
+    verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access' });
+    findUnique.mockResolvedValue({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: { name: RoleName.ADMIN } }, { role: { name: RoleName.PASSENGER } }],
+      twoFactor: { enabled: true },
+    });
+    await guard.canActivate(context);
+    expect(request).toHaveProperty('user.roles', [RoleName.ADMIN, RoleName.PASSENGER]);
   });
 
   it('só reconhece o segundo fator se o token e a conta confirmarem', async () => {

@@ -5,9 +5,10 @@ import {
   SlidersHorizontal,
   Star,
 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,7 @@ import { OpenFreeMap, type MapPoint } from '../components/OpenFreeMap';
 import { colors, fonts, maxContentWidth } from '../theme';
 import { RideDetailsScreen } from './RideDetailsScreen';
 import { RideRequestsScreen } from './RideRequestsScreen';
+import { Button } from '../components/Button';
 
 type Ride = {
   id: string;
@@ -29,6 +31,8 @@ type Ride = {
   status: 'SCHEDULED' | 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   availableSeats: number;
   pricePerPersonCents: number;
+  requestStatus: 'PENDING' | null;
+  canRequest: boolean;
   originLocation: { name: string; latitude?: number | null; longitude?: number | null };
   destinationLocation: { name: string; latitude?: number | null; longitude?: number | null };
   driver: {
@@ -58,12 +62,23 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [showRequests, setShowRequests] = useState(false);
+  const lastQuery = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedRideId || showRequests) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') setRefreshVersion((value) => value + 1);
+    }, 15000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setRefreshVersion((value) => value + 1);
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [selectedRideId, showRequests]);
 
   // A API aplica os filtros e devolve uma página já ordenada.
   useEffect(() => {
     let active = true;
     const timeout = setTimeout(() => {
-      setLoading(true);
       setError(null);
       const params = new URLSearchParams({
         page: String(page),
@@ -74,7 +89,10 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
       if (destination.trim()) params.set('destination', destination);
       if (dateFilter) params.set('date', dateFilter);
       if (timeFilter) params.set('time', timeFilter);
-      authApi<{ items: Ride[]; total: number }>(`/rides?${params}`)
+      const query = params.toString();
+      if (lastQuery.current !== query) setLoading(true);
+      lastQuery.current = query;
+      authApi<{ items: Ride[]; total: number; hasPendingRequest: boolean }>(`/rides?${params}`)
         .then((response) => {
           if (active) {
             setDisplayedRides(response.items);
@@ -148,10 +166,12 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
   };
 
   if (selectedRideId) return <RideDetailsScreen rideId={selectedRideId} onBack={() => {
+    setLoading(true);
     setSelectedRideId(null);
     setRefreshVersion((current) => current + 1);
   }} />;
   if (showRequests) return <RideRequestsScreen mode="passenger" onBack={() => {
+    setLoading(true);
     setShowRequests(false);
     setRefreshVersion((current) => current + 1);
   }} onViewRide={setSelectedRideId} />;
@@ -172,10 +192,6 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
             <Text style={styles.headerTitle}>Buscar Carona</Text>
             <View style={{ width: 40 }} />
           </View>
-
-          <Pressable onPress={() => setShowRequests(true)} accessibilityRole="button" style={styles.requestsLink}>
-            <Text style={styles.requestsLinkText}>Minhas solicitações →</Text>
-          </Pressable>
 
           <View style={styles.inputsContainer}>
             <View style={styles.inputWrapper}>
@@ -254,6 +270,9 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
+            <View style={styles.requestsAction}>
+              <Button title="Minhas solicitações" variant="outline" onPress={() => setShowRequests(true)} />
+            </View>
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsCount}>
                 {loading
@@ -410,9 +429,11 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
                             ? 'vaga disponível'
                             : 'vagas disponíveis'}
                         </Text>
-                        <Pressable style={styles.reserveButton} onPress={() => setSelectedRideId(ride.id)} accessibilityRole="button" accessibilityLabel={`Ver detalhes e solicitar carona com ${ride.driver.fullName}`}>
+                        {ride.requestStatus === 'PENDING' ? <Pressable style={[styles.reserveButton, styles.waitingButton]} disabled accessibilityRole="button" accessibilityState={{ disabled: true }} accessibilityLabel="Aguardando confirmação do motorista">
+                          <Text style={styles.reserveButtonText}>Aguardando</Text>
+                        </Pressable> : ride.canRequest ? <Pressable style={styles.reserveButton} onPress={() => setSelectedRideId(ride.id)} accessibilityRole="button" accessibilityLabel={`Ver detalhes e solicitar carona com ${ride.driver.fullName}`}>
                           <Text style={styles.reserveButtonText}>Reservar</Text>
-                        </Pressable>
+                        </Pressable> : null}
                       </View>
                     </View>
                   );
@@ -427,8 +448,8 @@ export function SearchRideScreen({ onBack }: { onBack?: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  requestsLink: { alignSelf: 'flex-end', paddingVertical: 12, paddingHorizontal: 8 },
-  requestsLinkText: { color: colors.white, fontFamily: fonts.medium, fontSize: 13 },
+  waitingButton: { opacity: 0.6 },
+  requestsAction: { width: '100%', maxWidth: maxContentWidth, alignSelf: 'center', marginBottom: 16 },
   safe: { flex: 1, backgroundColor: colors.primary },
   keyboardView: { flex: 1 },
 
