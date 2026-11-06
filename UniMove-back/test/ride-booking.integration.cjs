@@ -12,11 +12,9 @@ const {
   NotificationService,
 } = require('../dist/src/modules/notifications/notifications.service.js');
 const { HttpExceptionFilter } = require('../dist/src/common/filters/http-exception.filter.js');
-const { PrismaClient } = require('../dist/src/generated/prisma/client.js');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+// Mesma sessão da aplicação, inclusive o fuso em UTC: ver a nota em
+// ride-queries.integration.cjs.
+const prisma = new PrismaService();
 const rollback = new Error('ROLLBACK_BOOKING_FIXTURES');
 const createdIds = [];
 

@@ -20,15 +20,28 @@ function normalized(value = '') {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+// `lower()` depende do locale do banco: com LC_CTYPE=C, que é o padrão da
+// imagem oficial do PostgreSQL e do serviço usado no CI, ele não rebaixa letra
+// acentuada — `lower('ÁGUAS CLARAS')` devolve 'Águas claras'. Tirando o acento
+// ANTES, com as maiúsculas também na tabela, sobra só ASCII para o `lower`, e
+// aí o resultado é o mesmo em qualquer locale.
+const COM_ACENTO = 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç';
+const SEM_ACENTO = 'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc';
+const semAcento = (coluna: Prisma.Sql) =>
+  Prisma.sql`lower(translate(${coluna}, ${COM_ACENTO}, ${SEM_ACENTO}))`;
+
 @Injectable()
 export class RideQueriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async search(query: SearchRidesDto, userId?: string) {
     this.validateDate(query.date);
-    const pending = userId ? await this.prisma.rideRequest.findMany({
-      where: activePendingRequestWhere(userId, new Date()), select: { rideId: true },
-    }) : [];
+    const pending = userId
+      ? await this.prisma.rideRequest.findMany({
+          where: activePendingRequestWhere(userId, new Date()),
+          select: { rideId: true },
+        })
+      : [];
     const pendingRideIds = new Set(pending.map(({ rideId }) => rideId));
     const conditions: Prisma.Sql[] = [
       Prisma.sql`r.status IN ('OPEN', 'SCHEDULED')`,
@@ -53,11 +66,11 @@ export class RideQueriesService {
     ];
     if (query.origin?.trim())
       conditions.push(
-        Prisma.sql`position(${normalized(query.origin)} in translate(lower(o.name), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')) > 0`,
+        Prisma.sql`position(${normalized(query.origin)} in ${semAcento(Prisma.sql`o.name`)}) > 0`,
       );
     if (query.destination?.trim())
       conditions.push(
-        Prisma.sql`position(${normalized(query.destination)} in translate(lower(d.name), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')) > 0`,
+        Prisma.sql`position(${normalized(query.destination)} in ${semAcento(Prisma.sql`d.name`)}) > 0`,
       );
     if (query.date)
       conditions.push(
@@ -71,9 +84,7 @@ export class RideQueriesService {
     const counts = await this.prisma.$queryRaw<{ total: number }[]>(
       Prisma.sql`SELECT count(*)::int AS total ${from}`,
     );
-    const ids = await this.prisma.$queryRaw<
-      { id: string; availableSeats: number }[]
-    >(
+    const ids = await this.prisma.$queryRaw<{ id: string; availableSeats: number }[]>(
       Prisma.sql`SELECT r.id, ${availableSeatsSql} AS "availableSeats" ${from} ORDER BY r.departure_at ASC, r.id ASC LIMIT ${query.limit} OFFSET ${(query.page - 1) * query.limit}`,
     );
     const rides = ids.length
@@ -92,15 +103,16 @@ export class RideQueriesService {
           _count: { score: true },
         })
       : [];
-    const byDriver = new Map(
-      ratings.map((rating) => [rating.reviewedUserId, rating]),
-    );
+    const byDriver = new Map(ratings.map((rating) => [rating.reviewedUserId, rating]));
     return {
       items: rides.map((ride) => ({
         ...ride,
         availableSeats: ids.find(({ id }) => id === ride.id)!.availableSeats,
         requestStatus: pendingRideIds.has(ride.id) ? 'PENDING' : null,
-        canRequest: pending.length === 0 && ride.driverId !== userId && ids.find(({ id }) => id === ride.id)!.availableSeats > 0,
+        canRequest:
+          pending.length === 0 &&
+          ride.driverId !== userId &&
+          ids.find(({ id }) => id === ride.id)!.availableSeats > 0,
         driver: {
           ...ride.driver,
           ratingAverage: byDriver.get(ride.driverId)?._avg.score ?? null,
@@ -139,11 +151,10 @@ export class RideQueriesService {
     if (!ride) throw new NotFoundException('Carona não encontrada.');
     const now = new Date();
     const pendingRequest = await this.prisma.rideRequest.findFirst({
-      where: activePendingRequestWhere(userId, now), select: { id: true },
+      where: activePendingRequestWhere(userId, now),
+      select: { id: true },
     });
-    const availability = await this.prisma.$queryRaw<
-      { availableSeats: number }[]
-    >(
+    const availability = await this.prisma.$queryRaw<{ availableSeats: number }[]>(
       Prisma.sql`SELECT ${availableSeatsSql} AS "availableSeats" FROM rides r WHERE r.id = ${id}::uuid`,
     );
     const lastRequest = ride.requests[0];
@@ -152,16 +163,13 @@ export class RideQueriesService {
           ...lastRequest,
           status:
             lastRequest.status === 'PENDING' &&
-            (lastRequest.expiresAt <= now ||
-              !['OPEN', 'SCHEDULED'].includes(ride.status))
+            (lastRequest.expiresAt <= now || !['OPEN', 'SCHEDULED'].includes(ride.status))
               ? 'EXPIRED'
               : lastRequest.status,
         }
       : null;
     const availableSeats = availability[0]?.availableSeats ?? 0;
-    const blocked =
-      request?.status === 'PENDING' ||
-      request?.reservation?.status === 'CONFIRMED';
+    const blocked = request?.status === 'PENDING' || request?.reservation?.status === 'CONFIRMED';
     const { requests: _requests, ...details } = ride;
     return {
       ...details,
@@ -221,8 +229,6 @@ export class RideQueriesService {
       parsed.getUTCMonth() !== month - 1 ||
       parsed.getUTCDate() !== day
     )
-      throw new BadRequestException(
-        'Informe uma data válida no formato dd/mm/aaaa.',
-      );
+      throw new BadRequestException('Informe uma data válida no formato dd/mm/aaaa.');
   }
 }
