@@ -5,6 +5,7 @@ Estado de 07/11/2026. **Nenhuma mudança de produção está autorizada por este
 ## Recursos existentes
 
 - Banco vazio, isolado dos dados atuais, criado no projeto Neon já existente `unicarona-admin-homologacao`: `unimove_iam_preview` (branch `main` desse projeto). O banco foi verificado com zero tabelas ao ser criado; não copiar dados de produção.
+- Papel PostgreSQL `unimove_iam_app`, com permissões de leitura/escrita limitadas a `unimove_iam_preview`, criado para utilização futura pelo runtime. **Ainda não utilizar essa conta em IAM**: as tabelas IAM têm RLS sem políticas públicas e exigem uma política explícita para o papel de homologação, depois de aplicar as migrations. Sua senha não pertence ao repositório.
 - Repositório da API: `JoaoAlbernaz1/UniMove`, branch `feat/admin-iam` (PR #16).
 - Repositório do painel: `JoaoAlbernaz1/UniCarona-Admin-MVP`, branch de preview `preview/admin-iam-isolado`, derivada de `feat/admin-iam-contracts` (PR #2).
 - **Na branch de preview somente**, `UniMove-admin/vercel.json` não possui rewrite `/api/*` para produção. Até configurar um backend de homologação, operações de API devem falhar de maneira controlada. **Não mesclar esse arquivo de preview na branch de produção sem revisar o proxy.**
@@ -37,7 +38,7 @@ A criação automática do serviço foi impedida por proteção da integração 
 - `ADMIN_PANEL_ORIGINS` e `ADMIN_PANEL_URL`: informar **apenas a origem HTTPS exata do preview** quando estiver disponível. Não usar domínio de produção nem wildcard.
 - `CORS_ORIGINS`: restringir à origem específica do preview, quando necessário.
 
-Execute `npm run prisma:deploy` **deliberadamente no banco `unimove_iam_preview`** antes de iniciar o backend; valide `_prisma_migrations` e as quatro tabelas IAM. Evite automatizar migração no startup de aplicação: em caso de rollback, ela não deve rodar novamente sem revisão. Confira o campo `DATABASE_URL` antes de migrar e que os usuários/segredos do banco são sintéticos.
+Execute `npm run prisma:deploy` **deliberadamente no banco `unimove_iam_preview`** com a conta proprietária do schema antes de iniciar o backend; valide `_prisma_migrations` e as quatro tabelas IAM. Para executar a API com `unimove_iam_app`, adicione, **somente na base de homologação**, políticas RLS e privilégios específicos para esse papel nas quatro tabelas IAM; sem essas políticas, ele não poderá operar o IAM. Teste o acesso com esse papel antes de configurar o Render. Nunca habilite políticas amplas para `anon` ou `authenticated`. Evite automatizar migração no startup de aplicação: em caso de rollback, ela não deve rodar novamente sem revisão. Confira o campo `DATABASE_URL` antes de migrar e que os usuários/segredos do banco são sintéticos.
 
 Para bootstrap de ADMIN de teste, use o CLI de provisionamento no ambiente isolado com uma identidade sintética e chave MFA da homologação, sem criar administrador em produção. Após inicialização, testar convites e recuperação com caixa de e-mail de teste em provedor transacional sandbox, não com e-mails reais de estudantes.
 
