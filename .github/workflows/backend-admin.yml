@@ -64,6 +64,9 @@ jobs:
       # A reprodução do último admin usa um banco ainda sem fixtures ADMIN.
       - run: npm run test:security-integration
       - run: npm run test:admin-integration
+      # IAM exige PostgreSQL real e descarta somente a base local unimove_test.
+      # Cobertura de convite, senha, MFA, sessoes e concorrencia antes do merge.
+      - run: npm run test:iam-integration
       - run: npm run build
   student-contracts:
     runs-on: ubuntu-latest
