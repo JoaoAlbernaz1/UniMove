@@ -57,12 +57,21 @@ describe('AdminSecurityService', () => {
           where,
           data,
         }: {
-          where: { enabled: boolean };
+          where: { enabled: boolean; updatedAt?: Date };
           data: { secret?: string; recoveryCodes: string[] };
         }) => {
-          if (!account.twoFactor || account.twoFactor.enabled !== where.enabled)
+          if (
+            !account.twoFactor ||
+            account.twoFactor.enabled !== where.enabled ||
+            (where.updatedAt && account.twoFactor.updatedAt.getTime() !== where.updatedAt.getTime())
+          )
             return Promise.resolve({ count: 0 });
-          account.twoFactor = { ...account.twoFactor, ...data };
+          account.twoFactor = {
+            ...account.twoFactor,
+            ...data,
+            // A coluna @updatedAt muda na confirmação, como no PostgreSQL real.
+            updatedAt: new Date(account.twoFactor.updatedAt.getTime() + 1000),
+          };
           return Promise.resolve({ count: 1 });
         },
       ),
@@ -270,9 +279,38 @@ describe('AdminSecurityService', () => {
     });
     expect(result.replaced).toBe(true);
     expect(result.recoveryCodes).toHaveLength(8);
+    expect(result.sessionsRevoked).toBe(2);
+    expect(revokedWhere).toMatchObject({
+      userId: actor.id,
+      scope: SessionScope.ADMIN,
+      id: { not: actor.sid },
+    });
     expect(decryptTwoFactorSecret(account.twoFactor!.secret).secret).toBe('REPLACEMENTSECRET');
     expect(account.twoFactor!.recoveryCodes).not.toContain('hash-antigo-1');
     expect(audits.map((a) => a.action)).toContain('ADMIN_2FA_REPLACED');
+  });
+
+
+  it('um ticket já concluído não pode substituir novamente o fator mesmo com novo TOTP', async () => {
+    const { setupTicket } = await service.startAuthenticatorReplacement(actor, reauthCredentials);
+    await service.confirmAuthenticatorReplacement(actor, { setupTicket, code: '123456' });
+    const savedSecret = account.twoFactor!.secret;
+    const auditsAfterSuccess = audits.length;
+    await expect(
+      service.confirmAuthenticatorReplacement(actor, { setupTicket, code: '654321' }),
+    ).rejects.toMatchObject({ response: { code: 'ADMIN_FACTOR_SETUP_STALE' } });
+    expect(account.twoFactor!.secret).toBe(savedSecret);
+    expect(audits).toHaveLength(auditsAfterSuccess);
+    expect(tx.refreshSession.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('um ticket antigo é invalidado se os códigos de recuperação foram trocados', async () => {
+    const { setupTicket } = await service.startAuthenticatorReplacement(actor, reauthCredentials);
+    await service.regenerateRecoveryCodes(actor, reauthCredentials);
+    await expect(
+      service.confirmAuthenticatorReplacement(actor, { setupTicket, code: '123456' }),
+    ).rejects.toMatchObject({ response: { code: 'ADMIN_FACTOR_SETUP_STALE' } });
+    expect(decryptTwoFactorSecret(account.twoFactor!.secret).secret).toBe('SEGREDOATUAL');
   });
 
   it('recusa ticket inválido, de outra conta e expirado', async () => {
