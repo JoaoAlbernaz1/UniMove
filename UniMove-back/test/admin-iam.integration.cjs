@@ -830,6 +830,117 @@ async function main() {
     assert.ok([401, 403].includes(after.status), `esperava 401/403, veio ${after.status}`);
   });
 
+  console.log('\nSegurança da própria conta');
+
+  await it('o resumo da conta traz 2FA, sessões e último acesso reais', async () => {
+    const admin = await createAdmin();
+    const panel = await signIn(admin);
+    const response = await panel.get('/admin/security/overview');
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.account.email, admin.email);
+    assert.deepEqual(response.body.account.permissions, ALL_PERMISSIONS);
+    assert.equal(response.body.twoFactor.enabled, true);
+    assert.equal(response.body.twoFactor.recoveryCodesTotal, 8);
+    assert.equal(response.body.sessions.active, 1);
+    assert.equal(response.body.sessions.others, 0);
+    assert.ok(response.body.lastLoginAt, 'o login acabou de acontecer');
+    // Senha nunca trocada por aqui: null, nunca uma data inventada.
+    assert.equal(response.body.password.changedAt, null);
+    const dump = JSON.stringify(response.body);
+    assert.ok(!dump.includes(admin.secret), 'segredo do fator nao pode sair');
+    assert.ok(!/$argon2/.test(dump), 'hash nenhum pode sair');
+  });
+
+  await it('trocar a senha mantém a sessão atual e derruba as outras', async () => {
+    const admin = await createAdmin();
+    const outra = await signIn(admin);
+    const atual = await signIn(admin);
+    const errada = await atual.patch('/admin/security/password', {
+      body: { currentPassword: 'errada', password: NEW_PASSWORD },
+    });
+    assert.equal(errada.status, 401);
+    assert.equal(errada.body.code, 'INVALID_CREDENTIALS');
+    const igual = await atual.patch('/admin/security/password', {
+      body: { currentPassword: PASSWORD, password: PASSWORD },
+    });
+    assert.equal(igual.status, 409);
+    assert.equal(igual.body.code, 'PASSWORD_UNCHANGED');
+
+    const ok = await atual.patch('/admin/security/password', {
+      body: { currentPassword: PASSWORD, password: NEW_PASSWORD },
+    });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await atual.get('/admin/dashboard/summary')).status, 200);
+    const caiu = await outra.get('/admin/dashboard/summary');
+    assert.ok([401, 403].includes(caiu.status), `a outra sessao deveria cair, veio ${caiu.status}`);
+    // A senha nova vale e o segundo fator continua exigido.
+    const login = await new Panel().post('/admin/auth/login', {
+      body: { email: admin.email, password: NEW_PASSWORD },
+    });
+    assert.equal(login.body.step, 'TWO_FACTOR');
+  });
+
+  await it('gerar códigos novos exige reautenticação e invalida o lote antigo', async () => {
+    const admin = await createAdmin();
+    const panel = await signIn(admin);
+    const semReauth = await panel.post('/admin/security/recovery-codes', { body: {} });
+    assert.equal(semReauth.status, 400, JSON.stringify(semReauth.body));
+    const antes = await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } });
+    const ok = await panel.post('/admin/security/recovery-codes', {
+      body: await reauth(admin),
+    });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.recoveryCodes.length, 8);
+    const depois = await prisma.twoFactorAuth.findUnique({ where: { userId: admin.id } });
+    assert.notDeepEqual(depois.recoveryCodes, antes.recoveryCodes);
+    for (const [index, code] of ok.body.recoveryCodes.entries())
+      assert.ok(await argon2.verify(depois.recoveryCodes[index], code.replace('-', '')));
+  });
+
+  await it('substituir o autenticador só troca o fator quando o código novo confere', async () => {
+    const admin = await createAdmin();
+    const panel = await signIn(admin);
+    const started = await panel.post('/admin/security/authenticator/start', {
+      body: await reauth(admin),
+    });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    const novo = started.body.twoFactor.secret;
+    assert.ok(started.body.setupTicket);
+    // Antes de confirmar, o autenticador antigo ainda entra.
+    const aindaVale = await signIn(admin);
+    assert.equal((await aindaVale.get('/admin/auth/session')).status, 200);
+
+    const errado = await panel.post('/admin/security/authenticator/confirm', {
+      body: { setupTicket: started.body.setupTicket, code: '000000' },
+    });
+    assert.equal(errado.status, 401);
+    const confirmed = await panel.post('/admin/security/authenticator/confirm', {
+      body: { setupTicket: started.body.setupTicket, code: await freshCode(novo) },
+    });
+    assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+    assert.equal(confirmed.body.recoveryCodes.length, 8);
+    // Agora o antigo não entra mais e o novo entra.
+    const comAntigo = await signIn({ email: admin.email, secret: admin.secret }).catch((e) => e);
+    assert.ok(comAntigo instanceof Error, 'o autenticador antigo deveria ter deixado de valer');
+    const comNovo = await signIn({ email: admin.email, secret: novo });
+    assert.equal((await comNovo.get('/admin/auth/session')).status, 200);
+  });
+
+  await it('a trilha de segurança filtra por grupo e por ação', async () => {
+    const admin = await createAdmin();
+    const panel = await signIn(admin);
+    const grupo = await panel.get('/admin/audit-logs?group=security&limit=100');
+    assert.equal(grupo.status, 200);
+    assert.ok(grupo.body.length, 'deveria haver eventos de seguranca');
+    assert.ok(
+      grupo.body.every((entry) => entry.action.startsWith('ADMIN_')),
+      'o grupo de seguranca nao deveria trazer operacao de estudante',
+    );
+    const porAcao = await panel.get('/admin/audit-logs?group=security&action=ADMIN_LOGIN');
+    assert.equal(porAcao.status, 200);
+    assert.ok(porAcao.body.every((entry) => entry.action === 'ADMIN_LOGIN'));
+  });
+
   console.log('\nAuditoria e segredos');
 
   await it('a auditoria registra os eventos sensíveis sem token, código ou segredo', async () => {
