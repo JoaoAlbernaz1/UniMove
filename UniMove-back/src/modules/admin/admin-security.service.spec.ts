@@ -290,7 +290,6 @@ describe('AdminSecurityService', () => {
     expect(audits.map((a) => a.action)).toContain('ADMIN_2FA_REPLACED');
   });
 
-
   it('um ticket já concluído não pode substituir novamente o fator mesmo com novo TOTP', async () => {
     const { setupTicket } = await service.startAuthenticatorReplacement(actor, reauthCredentials);
     await service.confirmAuthenticatorReplacement(actor, { setupTicket, code: '123456' });
