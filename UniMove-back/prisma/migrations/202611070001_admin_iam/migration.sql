@@ -139,6 +139,33 @@ CREATE UNIQUE INDEX "admin_mfa_recoveries_open_key"
   WHERE "status" IN ('PENDING', 'APPROVED');
 
 -- ---------------------------------------------------------------------------
+-- Segurança do schema public (Supabase Data API): estas tabelas são acessadas
+-- exclusivamente pelo backend Prisma, nunca diretamente por anon/authenticated.
+-- RLS sem policies bloqueia acesso Data API mesmo onde há grants padrão.
+-- Os REVOKEs são condicionais para manter a migração compatível com PostgreSQL
+-- de testes que não possui os papéis Supabase.
+-- ---------------------------------------------------------------------------
+ALTER TABLE "admin_access" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "admin_invites" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "admin_password_resets" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "admin_mfa_recoveries" ENABLE ROW LEVEL SECURITY;
+
+DO $
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL PRIVILEGES ON TABLE
+      "admin_access", "admin_invites", "admin_password_resets", "admin_mfa_recoveries"
+      FROM "anon";
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL PRIVILEGES ON TABLE
+      "admin_access", "admin_invites", "admin_password_resets", "admin_mfa_recoveries"
+      FROM "authenticated";
+  END IF;
+END
+$;
+
+-- ---------------------------------------------------------------------------
 -- Continuidade: quem já é administrador hoje recebe todas as permissões, para
 -- que a publicação desta migração não retire nenhum acesso existente. Contas
 -- administrativas novas passam a nascer pelo convite, com permissões explícitas.
