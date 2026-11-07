@@ -64,8 +64,55 @@ export class UpdateIncidentDto {
   @IsOptional() @trimmed() @IsString() @MaxLength(1000) note?: string;
 }
 
+/** Agrupamento da auditoria. 'security' é o que a tela de segurança mostra. */
+export const AUDIT_GROUPS = ['security'] as const;
+export type AuditGroup = (typeof AUDIT_GROUPS)[number];
+
+/**
+ * Ações que a trilha de segurança reúne: entrar, segundo fator, convite,
+ * permissão, senha, recuperação e sessão. Suspensão de estudante e moderação
+ * ficam de fora: são operação, não acesso.
+ */
+export const SECURITY_AUDIT_ACTIONS = [
+  'ADMIN_LOGIN',
+  'ADMIN_LOGIN_FAILED',
+  'ADMIN_LOGOUT',
+  'ADMIN_ACCESS_DENIED',
+  'ADMIN_2FA_FAILED',
+  'ADMIN_2FA_ENROLLED',
+  'ADMIN_2FA_ENROLLMENT_STARTED',
+  'ADMIN_2FA_REPLACEMENT_STARTED',
+  'ADMIN_2FA_REPLACED',
+  'ADMIN_2FA_RESET_BY_OPERATOR',
+  'ADMIN_RECOVERY_CODE_USED',
+  'ADMIN_RECOVERY_CODES_REGENERATED',
+  'ADMIN_REAUTH_FAILED',
+  'ADMIN_INVITE_CREATED',
+  'ADMIN_INVITE_EMAIL_FAILED',
+  'ADMIN_INVITE_EMAIL_CONFIRMED',
+  'ADMIN_INVITE_PASSWORD_SET',
+  'ADMIN_INVITE_ACCEPTED',
+  'ADMIN_INVITE_REVOKED',
+  'ADMIN_PERMISSIONS_CHANGED',
+  'ADMIN_ACCESS_REVOKED',
+  'ADMIN_PASSWORD_CHANGED',
+  'ADMIN_PASSWORD_RESET_REQUESTED',
+  'ADMIN_PASSWORD_RESET_COMPLETED',
+  'ADMIN_MFA_RECOVERY_REQUESTED',
+  'ADMIN_MFA_RECOVERY_APPROVED',
+  'ADMIN_MFA_RECOVERY_REJECTED',
+  'ADMIN_MFA_RECOVERY_STARTED',
+  'ADMIN_MFA_RECOVERY_COMPLETED',
+  'ADMIN_SESSION_REVOKED',
+  'ADMIN_SESSIONS_REVOKED_OTHERS',
+  'ADMIN_SESSIONS_REVOKED_BY_MANAGER',
+  'ADMIN_SESSION_REUSE_DETECTED',
+] as const;
+
 export class AdminAuditQueryDto extends PaginationDto {
   @IsOptional() @trimmed() @IsString() @MaxLength(100) q?: string;
+  @IsOptional() @IsIn([...AUDIT_GROUPS]) group?: AuditGroup;
+  @IsOptional() @trimmed() @IsString() @MaxLength(60) action?: string;
   @IsOptional() @trimmed() @IsString() @MaxLength(60) entityType?: string;
   @IsOptional() @IsUUID() actorUserId?: string;
   @IsOptional() @IsISO8601() from?: string;
