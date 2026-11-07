@@ -17,7 +17,7 @@ import {
   assertAdminOrigin,
   isUnsafeMethod,
 } from '../security/admin-session';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { RoleName, SessionScope, UserStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
 
 interface AccessPayload {
@@ -105,7 +105,14 @@ export class JwtAuthGuard implements CanActivate {
         ...(adminSession
           ? {
               refreshSessions: {
-                where: { id: payload.sid, revokedAt: null, expiresAt: { gt: new Date() } },
+                // Sessões antigas migradas como APP não são sessões válidas do painel.
+                // Exigir ADMIN força novo login TOTP sem afetar o aplicativo.
+                where: {
+                  id: payload.sid,
+                  scope: SessionScope.ADMIN,
+                  revokedAt: null,
+                  expiresAt: { gt: new Date() },
+                },
                 select: { id: true },
                 take: 1,
               },
