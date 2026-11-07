@@ -2,6 +2,15 @@
 
 Data: 2026-11-07. Revisão independente somente de leitura em ambientes existentes, com correção documental em branch de feature. **Sem merge, deploy, alteração de variável, migração ou SQL de escrita em produção.**
 
+## Atualização da homologação automatizada — 07/11/2026
+
+- [CI backend aprovado](https://github.com/JoaoAlbernaz1/UniMove/actions/runs/42413092903): `npm run prisma:deploy` em PostgreSQL descartável, lint, typecheck, testes unitários, 59 testes administrativos anteriores, **36 testes IAM**, regressão de busca e contratos do aplicativo dos estudantes.
+- [CI frontend aprovado](https://github.com/JoaoAlbernaz1/UniCarona-Admin-MVP/actions/runs/42412697031) na branch do PR #2 (lint, typecheck, testes e build).
+- Um job `migration-backfill` separado prepara um banco **antes** da migração IAM com ADMIN ativo, ADMIN excluído, estudante e sessão legada, aplica a migration, valida concessão das seis permissões somente ao ADMIN ativo, RLS, ausência de grants de leitura para `anon`/`authenticated`, índices parciais e reaplicação idempotente. [Execução do job](https://github.com/JoaoAlbernaz1/UniMove/actions/runs/42414509787). **Isso não valida rollback por restauração de backup**, que permanece pendente.
+- A confirmação de substituição do MFA passou a comparar a versão anterior do fator com o ticket assinado, evitando replay após confirmação. Também revoga outras sessões administrativas. Foram acrescentados testes unitários e teste HTTP de revogação.
+- **Risco residual de sessões legadas:** sessões administrativas criadas antes da coluna `scope` ficam com `APP` e não aparecem nas listas/ações que filtram `scope=ADMIN`. O `JwtAuthGuard` verifica se a sessão existe e não foi revogada, mas não exige o escopo `ADMIN`. Por isso, uma sessão administrativa antiga pode continuar válida mesmo quando a interface só mostra sessões `ADMIN`. Definir, antes da publicação, como invalidar sessões antigas de administradores (com re-login MFA), sem revogar arbitrariamente sessões de estudantes. Revogação de sessões com `scope=ADMIN` sozinha não resolve esse cenário.
+- A revisão anterior abaixo é um registro histórico; afirmações sobre ausência de testes descartáveis ou falta de proteção contra replay foram superadas por esta atualização. O teste de ponta a ponta entre navegador, backend de homologação e serviço de e-mail real ainda não ocorreu.
+
 ## Evidência observada
 
 - Backend [PR #16](https://github.com/JoaoAlbernaz1/UniMove/pull/16), head `46905748292f1b0e2da46688aa3acb3d052af1e0` antes desta revisão: aberto, draft, `mergeable=true`, `mergeable_state=clean`. Checks `backend`, `student-contracts` e `busca` aprovados.
