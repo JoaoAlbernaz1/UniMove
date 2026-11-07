@@ -348,38 +348,71 @@ aceita código repetido.
 7. **Não testado:** leitor de tela, iOS real, auditoria automática de WCAG.
    Nenhuma tela foi criada nesta etapa, então isso vale para a próxima.
 
-## Lista de publicação
+## Lista de publicação — revisão de 07/11/2026
 
-### Render (backend)
+**Atenção:** a configuração ativa do Render e o `render.yaml` executam
+`npm run start:prod`, **não** `prisma migrate deploy`. A versão anterior
+deste checklist afirmava incorretamente que a migração era automática.
+**Não fazer deploy da API IAM antes da migração, aprovada e verificada.**
 
-1. Fazer merge de `feat/admin-iam` na `main` do `JoaoAlbernaz1/UniMove`.
-2. Conferir que o `startCommand` do `render.yaml` continua rodando
-   `prisma migrate deploy` — é ele que aplica `202611070001_admin_iam`.
-3. **Antes do deploy**, decidir com o dono do banco a janela da migração. Ela é
-   aditiva e rápida, mas insere uma linha por administrador existente.
-4. Configurar, no painel do Render: `ADMIN_PANEL_URL=https://unimove-delta.vercel.app`
-   e, quando houver provedor, `MAIL_PROVIDER=smtp` com `SMTP_HOST`, `SMTP_PORT`,
-   `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM`.
-5. Não alterar `TWO_FACTOR_ENCRYPTION_KEY`, `JWT_ACCESS_SECRET`,
-   `JWT_REFRESH_SECRET` nem `ADMIN_PANEL_ORIGINS`.
-6. Depois do deploy, conferir no banco que `admin_access` tem uma linha por
-   conta ADMIN e que o administrador atual continua entrando no painel.
-7. Conferir que `GET /api/v1/admin/auth/session` passou a devolver `permissions`.
+Consulte também [a auditoria de release](./ADMIN_IAM_RELEASE_AUDIT_2026-11-07.md)
+para evidências, bloqueios e plano de recuperação.
 
-### Vercel (painel)
+### Antes de qualquer alteração em produção
 
-8. O frontend desta etapa só acrescentou tipos, cliente de API e o auxiliar de
-   permissão. Nenhuma tela mudou, então o deploy é seguro e opcional.
-9. A CSP do `vercel.json` não precisa de mudança: as rotas novas usam a mesma
-   origem, pelo rewrite que já existe.
-10. Quando as telas do Figma entrarem, revisar a CSP se elas carregarem o QR de
-    outro lugar — hoje o QR vem como `data:` URI, já permitido por `img-src`.
+1. Revisar e aprovar os PRs do backend (`UniMove#16`) e painel
+   (`UniCarona-Admin-MVP#2`); os dois continuam em rascunho.
+2. Obter aprovação do proprietário do Supabase, criar/verificar backup e combinar
+   janela para migração. A produção tem atualmente um ADMIN, e ainda não existe
+   `admin_access`: conferir a contagem e impedir remoção acidental do último gestor.
+3. Ensaiar `202611070001_admin_iam` com `npm run prisma:deploy` em PostgreSQL
+   **descartável**, mais verificação do backfill, concorrência, reversão e
+   idempotência. Não usar contas nem credenciais da produção.
+4. Montar um backend e um banco próprios para preview. O
+   `UniMove-admin/vercel.json` atual encaminha `/api/*` à API de **produção**;
+   mudar esse destino no preview isolado **antes de testar operações IAM**.
+5. Resolver o bloqueio Vercel do autor Git `ALJoao`: membro confirmado do time
+   Pro e conta Git vinculada. Não alterar a identidade do commit para contornar.
+6. Configurar provedor transacional de e-mail. No Render Free, as portas de saída
+   25/465/587 são bloqueadas. Candidato de baixo custo: Resend SMTP porta 2587
+   com STARTTLS (`SMTP_SECURE=false`); confirmar negociação TLS, domínio
+   verificado e entrega real em homologação antes de habilitar convites.
+7. Revisar comportamento de sessões após troca de MFA, replay do setup ticket
+   e acesso Data API/RLS das tabelas IAM antes da liberação.
+8. Confirmar testes E2E de convite, recuperação, MFA, reauth, permissões,
+   auditoria, sessões e regressão com dados inteiramente sintéticos.
 
-### Verificação depois de publicar
+### Publicação coordenada (exige autorização explícita)
 
-11. Emitir um convite de teste para um endereço institucional controlado pela
-    equipe e percorrer os quatro passos até o login.
-12. Conferir que o convite aceito aparece em `GET /admin/invites` como `ACCEPTED`
-    e que `admin_access` tem exatamente as permissões escolhidas.
-13. Pedir uma redefinição de senha de teste e confirmar que o segundo fator
-    continua sendo exigido no login seguinte.
+1. Deixar disponíveis os artefatos/SHAs aprovados, backup e procedimento de
+   rollback do banco.
+2. **Antes do deploy de backend**, executar `npm run prisma:deploy` contra o
+   Supabase de produção de forma deliberada, usando credencial protegida e
+   executor controlado; não depender do `start:prod`.
+3. Confirmar em `_prisma_migrations` a linha aplicada, integridade dos índices
+   parciais, permissões em `admin_access` para cada ADMIN não excluído e grants/
+   exposição de tabelas no schema `public`.
+4. Configurar `ADMIN_PANEL_URL=https://unimove-delta.vercel.app`, SMTP
+   escolhido e remetente verificado no Render, sem tocar nos segredos JWT/MFA,
+   `DATABASE_URL` nem `ADMIN_PANEL_ORIGINS` sem etapa autorizada.
+5. Fazer merge aprovado do backend e acionar **deploy manual** no Render
+   (auto-deploy está desligado). Validar `/health`, login administrativo atual,
+   `GET /api/v1/admin/auth/session` com `permissions`, logs e consultas.
+6. Fazer merge aprovado do painel e publicar no Vercel somente depois do
+   backend funcionar. Confirmar que o rewrite de **produção** continua correto.
+7. Testar login com 2FA real sem publicar OTP, convites de teste controlados,
+   sessão e permissões; verificar tratamento de `delivery`, 401/403 e auditoria.
+8. Monitorar. Coordenar separadamente a rotação de credencial PostgreSQL
+   anteriormente exposta com o responsável pela base e todos os consumidores.
+
+### Rollback
+
+- **Migration falhou antes do deploy:** não publicar o backend; restaurar do
+  snapshot segundo plano acordado, sem `DROP TABLE` improvisado.
+- **Backend falhou após migração aditiva:** reimplantar o deploy Render anterior
+  conhecido como saudável; manter o novo schema até avaliação específica, pois
+  o código antigo não exige sua remoção.
+- **Frontend falhou:** voltar ao deployment Vercel anterior. Isso não reverte
+  schema nem senhas/MFA.
+- **E-mail falhou:** suspender somente emissão de novos convites/recuperações
+  até restaurar o serviço de envio; preservação do login existente é prioridade.
