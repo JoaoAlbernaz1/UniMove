@@ -7,23 +7,24 @@ Estado de 07/11/2026. **Nenhuma mudança de produção está autorizada por este
 - Banco vazio, isolado dos dados atuais, criado no projeto Neon já existente `unicarona-admin-homologacao`: `unimove_iam_preview` (branch `main` desse projeto). O banco foi verificado com zero tabelas ao ser criado; não copiar dados de produção.
 - Papel PostgreSQL `unimove_iam_app`, com permissões de leitura/escrita limitadas a `unimove_iam_preview`, criado para utilização futura pelo runtime. **Ainda não utilizar essa conta em IAM**: as tabelas IAM têm RLS sem políticas públicas e exigem uma política explícita para o papel de homologação, depois de aplicar as migrations. Sua senha não pertence ao repositório.
 - Repositório da API: `JoaoAlbernaz1/UniMove`, branch `feat/admin-iam` (PR #16).
+- Serviço Render de homologação **criado sem credenciais**: `unimove-iam-homologacao`, ID `srv-dbnpmpjm8hqs73cs8p2g`, endereço `https://unimove-iam-homologacao.onrender.com`, plano Free, auto-deploy desligado. O primeiro deploy ainda não constitui ambiente funcional enquanto faltarem segredos, migração e configuração do painel.
 - Repositório do painel: `JoaoAlbernaz1/UniCarona-Admin-MVP`, branch de preview `preview/admin-iam-isolado`, derivada de `feat/admin-iam-contracts` (PR #2).
 - **Na branch de preview somente**, `UniMove-admin/vercel.json` não possui rewrite `/api/*` para produção. Até configurar um backend de homologação, operações de API devem falhar de maneira controlada. **Não mesclar esse arquivo de preview na branch de produção sem revisar o proxy.**
 - API de produção `https://unimove-api-jn5z.onrender.com` e banco Supabase de produção: NÃO conectar à homologação.
 
 ## Backend de homologação no Render
 
-A criação automática do serviço foi impedida por proteção da integração ao transportar credenciais entre provedores. **Nenhum serviço novo foi criado no Render.** Para concluir, o responsável pode criar um serviço Render novo, explicitamente Free, com:
+O serviço Render foi criado sem transmitir credenciais; a tentativa anterior de criar e configurar segredos numa única ação foi bloqueada. **Não crie um segundo serviço.** Abra o serviço existente `srv-dbnpmpjm8hqs73cs8p2g` no Render e configure somente os segredos próprios da homologação por meio dos campos protegidos, sem publicá-los neste repositório. A configuração criada foi:
 
 | Campo | Valor |
 | --- | --- |
 | Nome sugerido | `unimove-iam-homologacao` |
 | Repositório | `https://github.com/JoaoAlbernaz1/UniMove` |
 | Branch | `feat/admin-iam` |
-| Root directory | `UniMove-back` |
+| Root directory | vazio (comandos incluem `cd UniMove-back`) |
 | Runtime | Node 24 |
-| Build | `npm ci --include=dev && npm run prisma:generate && npm run build` |
-| Start | `npm run start:prod` |
+| Build | `cd UniMove-back && npm ci --include=dev && npm run prisma:generate && npm run build` |
+| Start | `cd UniMove-back && npm run start:prod` |
 | Auto-deploy | desligado |
 | Region | Ohio (próxima ao Neon us-east-1) |
 
