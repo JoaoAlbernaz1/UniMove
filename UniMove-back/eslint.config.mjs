@@ -20,6 +20,19 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+      // O sublinhado já é a forma como o código diz "existe, mas não uso" —
+      // `_requests` ao separar o resto de um objeto, `_dto` em assinatura que o
+      // framework exige. A regra passa a respeitar essa convenção, e nada mais:
+      // variável sem uso e sem sublinhado continua sendo erro.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 );
