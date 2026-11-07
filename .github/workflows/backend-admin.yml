@@ -68,6 +68,54 @@ jobs:
       # Cobertura de convite, senha, MFA, sessoes e concorrencia antes do merge.
       - run: npm run test:iam-integration
       - run: npm run build
+  migration-backfill:
+    # Reproduz a transição da base legada com ADMIN já cadastrado.
+    # PostgreSQL e contas são fixtures descartáveis, nunca Supabase de produção.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: unimove_migration_test
+          POSTGRES_USER: unimove
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U unimove -d unimove_migration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: UniMove-back
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://unimove:fixture-only-password@127.0.0.1:5432/unimove_migration_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UniMove-back/package-lock.json
+      - run: npm ci --include=dev
+      # Não é produção: retira a última migration temporariamente no runner.
+      - name: Migrar até a versão anterior e criar ADMIN legado fictício
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv prisma/migrations/202611070001_admin_iam "$RUNNER_TEMP/202611070001_admin_iam"
+          trap 'mv "$RUNNER_TEMP/202611070001_admin_iam" prisma/migrations/202611070001_admin_iam' EXIT
+          npm run prisma:deploy
+          node test/admin-iam-migration.integration.cjs before
+      - name: Aplicar migração IAM com backfill
+        run: npm run prisma:deploy
+      - name: Verificar permissões, RLS, grants e sessões legadas
+        run: node test/admin-iam-migration.integration.cjs after
+      - name: Reaplicar deploy sem duplicar backfill
+        run: npm run prisma:deploy
+      - name: Verificar idempotência do backfill
+        run: node test/admin-iam-migration.integration.cjs after
   student-contracts:
     runs-on: ubuntu-latest
     defaults:
