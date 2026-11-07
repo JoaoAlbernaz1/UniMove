@@ -2,6 +2,24 @@
 
 Estado de 07/11/2026. **Nenhuma mudança de produção está autorizada por este documento.**
 
+## Prévia publicada (Vercel)
+
+- Deployment isolado **READY**: `dpl_8S4kPxLJnvkXiH6zrtmK6vS9AXd5`, branch `preview/admin-iam-isolado`, commit `30f24fb`.
+- Alias estável protegido por Vercel Authentication: `https://unimove-git-preview-72891a-joaovictoralbernaz77-5904s-projects.vercel.app`.
+- O `vercel.json` da branch contém APENAS `/api/:path* → https://unimove-iam-homologacao.onrender.com/api/:path*`, nunca produção; CI da branch confere esse destino.
+- A interface está no ar, mas as rotas da API ainda falham porque o backend de homologação não iniciou. **READY no Vercel não é aprovação dos fluxos IAM.**
+- A equipe Vercel ainda precisa confirmar associação da conta Git `ALJoao`; o deploy por API foi feito com acesso do proprietário autorizado, sem alterar autorias nem permissões da equipe.
+
+## Configuração ainda necessária no Render
+
+- Serviço existente: [unimove-iam-homologacao](https://dashboard.render.com/web/srv-dbnpmpjm8hqs73cs8p2g), **não criar outro**.
+- Variáveis não sigilosas já aplicadas: `NODE_ENV=production`, `ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS=ucb.edu.br`, `MAIL_PROVIDER=none`, `TRUST_PROXY_HOPS=1`, `ADMIN_PANEL_ORIGINS`, `ADMIN_PANEL_URL`, `CORS_ORIGINS` limitadas ao preview.
+- **Não foram definidas** `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` ou `TWO_FACTOR_ENCRYPTION_KEY`. O primeiro build e o novo build de homologação falharam no `prisma generate`, pois `DATABASE_URL` não existe; nenhum usuário foi afetado.
+- A cópia segura da URL do Neon para os segredos do Render foi bloqueada pelo mecanismo de segurança da integração. O administrador deve colocar a URL **diretamente** no campo protegido do Render, sem copiá-la para mensagens ou arquivos de repositório. Conferir especificamente o caminho do banco `/unimove_iam_preview`.
+- Gerar três segredos aleatórios exclusivos do preview, de comprimento mínimo 32 caracteres, nos campos protegidos do Render. **Não copiar segredos de produção**.
+- O banco `unimove_iam_preview` estava vazio (`0` tabelas) na última inspeção; migrations ainda **não foram aplicadas nele**. Depois de configurar acesso ao banco: executar `prisma migrate deploy` de forma controlada **apenas contra o banco isolado**, conferir `_prisma_migrations`, e iniciar a API.
+- A função de e-mail permanece desligada (`MAIL_PROVIDER=none`); convites e recuperações não serão entregues até configurar o serviço transacional com domínio remetente verificado. Não anunciar prontidão IAM sem verificar envio.
+
 ## Recursos existentes
 
 - Banco vazio, isolado dos dados atuais, criado no projeto Neon já existente `unicarona-admin-homologacao`: `unimove_iam_preview` (branch `main` desse projeto). O banco foi verificado com zero tabelas ao ser criado; não copiar dados de produção.
