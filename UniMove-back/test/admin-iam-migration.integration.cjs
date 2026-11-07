@@ -85,7 +85,7 @@ async function run() {
     );
     assert.equal(applied.rows[0].total, 1, 'a migration deve ter sido aplicada');
 
-    const entries = await db.query('SELECT user_id, permissions FROM admin_access ORDER BY user_id');
+    const entries = await db.query('SELECT user_id, permissions::text[] AS permissions FROM admin_access ORDER BY user_id');
     assert.equal(entries.rowCount, 1, 'somente o ADMIN ativo recebe backfill');
     assert.equal(entries.rows[0].user_id, ids.active);
     assert.deepEqual([...entries.rows[0].permissions].sort(), [...required].sort());
