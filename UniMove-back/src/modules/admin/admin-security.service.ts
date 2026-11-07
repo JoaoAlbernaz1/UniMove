@@ -268,6 +268,7 @@ export class AdminSecurityService {
         message: 'O cadastro do autenticador expirou. Comece de novo.',
       });
 
+    const factorVersion = new Date(ticket.factorVersion);
     const { secret } = decryptTwoFactorSecret(ticket.secret);
     const code = dto.code.trim();
     if (!(await matchesTotp(secret, code)) || !(await this.limiter.claimCode(actor.id, code))) {
@@ -288,7 +289,7 @@ export class AdminSecurityService {
           enabled: true,
           // Compare-and-swap: o ticket só vale para a versão anterior do fator.
           // Após uma primeira confirmação, a versão muda e qualquer replay falha.
-          updatedAt: new Date(ticket.factorVersion),
+          updatedAt: factorVersion,
         },
         data: { secret: encryptTwoFactorSecret(secret), recoveryCodes: hashes },
       });
