@@ -308,13 +308,17 @@ async function verifyHttp(tx, driverId, filters) {
       timezone: 'America/Sao_Paulo', availableSeats: 6, pricePerPersonCents: 0,
       acceptsLuggage: true, allowsMusic: false, acceptsPets: false,
     };
-    // A autorização consulta os papéis atuais no banco: a promoção vale também
-    // para o token anterior, sem confiar nas roles antigas assinadas no JWT.
-    const published = await http.post('/api/v1/rides').set('Authorization', passengerAuthorization)
-      .send(newRide).expect(201);
+    // O JWT do aplicativo só concede papéis assinados E presentes no banco:
+    // um token de PASSENGER emitido antes da promoção não herda DRIVER.
+    const staleToken = await http.post('/api/v1/rides')
+      .set('Authorization', passengerAuthorization).send(newRide).expect(403);
+    assert.match(staleToken.body.message, /Perfil sem permissão/);
+    // O refresh emite um token com os papéis atuais, sem relogar o usuário.
     const refreshed = await http.post('/api/v1/auth/refresh')
       .send({ refreshToken: login.body.refreshToken }).expect(200);
     const driverAuthorization = 'Bearer ' + refreshed.body.accessToken;
+    const published = await http.post('/api/v1/rides').set('Authorization', driverAuthorization)
+      .send(newRide).expect(201);
     const refreshedProfile = await http.get('/api/v1/users/me').set('Authorization', driverAuthorization).expect(200);
     assert.ok(refreshedProfile.body.roles.some((entry) => entry.role.name === 'DRIVER'));
     assert.equal(published.body.availableSeats, 6);
