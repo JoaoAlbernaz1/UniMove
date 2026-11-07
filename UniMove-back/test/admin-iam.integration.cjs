@@ -919,6 +919,12 @@ async function main() {
     });
     assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
     assert.equal(confirmed.body.recoveryCodes.length, 8);
+    assert.ok(confirmed.body.sessionsRevoked >= 1, 'as outras sessoes ADMIN devem cair');
+    const sessaoAntiga = await aindaVale.get('/admin/dashboard/summary');
+    assert.ok(
+      [401, 403].includes(sessaoAntiga.status),
+      `a sessao anterior deveria ter sido revogada, veio ${sessaoAntiga.status}`,
+    );
     // Agora o antigo não entra mais e o novo entra.
     const comAntigo = await signIn({ email: admin.email, secret: admin.secret }).catch((e) => e);
     assert.ok(comAntigo instanceof Error, 'o autenticador antigo deveria ter deixado de valer');
