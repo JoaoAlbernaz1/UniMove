@@ -10,6 +10,7 @@ import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
+import { isValidCpf } from '../../common/validators/cpf';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import {
@@ -49,7 +50,7 @@ export class AuthService {
       throw new ConflictException('Use um e-mail institucional permitido.');
     }
     const cpf = dto.cpf.replace(/\D/g, '');
-    if (!this.isValidCpf(cpf)) throw new ConflictException('CPF inválido.');
+    if (!isValidCpf(cpf)) throw new ConflictException('CPF inválido.');
     const exists = await this.prisma.user.findFirst({
       where: { OR: [{ cpf }, { institutionalEmail: email }] },
     });
@@ -264,18 +265,5 @@ export class AuthService {
       }
     });
     return { accessToken, refreshToken, expiresIn: 900 };
-  }
-
-  private isValidCpf(cpf: string) {
-    if (!/^\d{11}$/.test(cpf) || /^(\d)\1+$/.test(cpf)) return false;
-    const digit = (length: number) => {
-      const sum = cpf
-        .slice(0, length)
-        .split('')
-        .reduce((acc, number, index) => acc + Number(number) * (length + 1 - index), 0);
-      const rest = (sum * 10) % 11;
-      return rest === 10 ? 0 : rest;
-    };
-    return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10]);
   }
 }

@@ -23,6 +23,32 @@ export const configuration = () => ({
       .map((origin) => origin.trim())
       .filter(Boolean),
     sessionMaxHours: Number(process.env.ADMIN_SESSION_MAX_HOURS ?? 12),
+    // Base dos links enviados por e-mail (convite, redefinição, recuperação).
+    // Ausente, as rotas que dependem de link recusam com ADMIN_PANEL_URL_MISSING
+    // em vez de derrubar a aplicação: publicar a API sem esta variável continua
+    // possível, só não habilita o envio.
+    panelUrl: process.env.ADMIN_PANEL_URL?.trim() || undefined,
+    inviteTtlHours: Number(process.env.ADMIN_INVITE_TTL_HOURS ?? 72),
+    passwordResetTtlMinutes: Number(process.env.ADMIN_PASSWORD_RESET_TTL_MINUTES ?? 30),
+    mfaRecoveryTtlHours: Number(process.env.ADMIN_MFA_RECOVERY_TTL_HOURS ?? 24),
+    // Vazio: vale a mesma lista institucional do cadastro de estudante.
+    inviteEmailDomains: (process.env.ADMIN_INVITE_EMAIL_DOMAINS ?? '')
+      .split(',')
+      .map((domain) => domain.trim().toLowerCase())
+      .filter(Boolean),
+  },
+  mail: {
+    // 'smtp' envia, 'log' só registra destinatário e assunto, 'none' não tenta.
+    // Sem valor explícito, é 'smtp' quando há SMTP configurado e 'log' quando não.
+    provider: process.env.MAIL_PROVIDER?.trim() || undefined,
+    from: process.env.MAIL_FROM ?? process.env.SMTP_FROM ?? process.env.SMTP_USER,
+    smtp: {
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: process.env.SMTP_SECURE === 'true',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
   },
   rides: { requestExpirationMinutes: Number(process.env.RIDE_REQUEST_EXPIRATION_MINUTES ?? 15) },
   matching: { toleranceMinutes: Number(process.env.MATCHING_TIME_TOLERANCE_MINUTES ?? 30) },
@@ -64,6 +90,36 @@ export function validateEnvironment(config: Record<string, unknown>) {
   const hours = Number(config.ADMIN_SESSION_MAX_HOURS ?? 12);
   if (!Number.isInteger(hours) || hours < 1 || hours > 24)
     throw new Error('ADMIN_SESSION_MAX_HOURS must be an integer between 1 and 24');
+  const panelUrl = config.ADMIN_PANEL_URL;
+  if (panelUrl !== undefined && typeof panelUrl !== 'string')
+    throw new Error('ADMIN_PANEL_URL must be a string');
+  if (panelUrl?.trim()) {
+    let valid: boolean;
+    try {
+      const parsed = new URL(panelUrl);
+      valid =
+        parsed.protocol === 'https:' ||
+        (config.NODE_ENV !== 'production' && parsed.protocol === 'http:');
+    } catch {
+      valid = false;
+    }
+    if (!valid) throw new Error('ADMIN_PANEL_URL must be an absolute URL (HTTPS in production)');
+  }
+  const windows: [string, number, number, number][] = [
+    ['ADMIN_INVITE_TTL_HOURS', 72, 1, 720],
+    ['ADMIN_PASSWORD_RESET_TTL_MINUTES', 30, 5, 1440],
+    ['ADMIN_MFA_RECOVERY_TTL_HOURS', 24, 1, 168],
+  ];
+  for (const [key, fallback, min, max] of windows) {
+    const value = Number(config[key] ?? fallback);
+    if (!Number.isInteger(value) || value < min || value > max)
+      throw new Error(`${key} must be an integer between ${min} and ${max}`);
+  }
+  const mailProvider = config.MAIL_PROVIDER;
+  if (mailProvider !== undefined && typeof mailProvider !== 'string')
+    throw new Error('MAIL_PROVIDER must be a string');
+  if (mailProvider?.trim() && !['smtp', 'log', 'none'].includes(mailProvider.trim()))
+    throw new Error('MAIL_PROVIDER must be one of smtp, log, none');
   parseProxyHops(config.TRUST_PROXY_HOPS);
   return config;
 }

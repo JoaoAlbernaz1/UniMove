@@ -150,6 +150,8 @@ export class JwtAuthGuard implements CanActivate {
           ? currentRoles
           : [],
       mfa: payload.mfa === true && account.twoFactor?.enabled === true,
+      // Identifica a sessão atual na lista de sessões do painel.
+      ...(adminSession && payload.sid ? { sid: payload.sid } : {}),
     };
     return true;
   }

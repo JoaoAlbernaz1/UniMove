@@ -140,6 +140,15 @@ model User {
   dataExportRequests            DataExportRequest[]
   twoFactor                     TwoFactorAuth?
 
+  adminAccess                   AdminAccess?                @relation("AdminAccessAccount")
+  adminAccessGranted            AdminAccess[]               @relation("AdminAccessGrantedBy")
+  adminInvitesSent              AdminInvite[]               @relation("AdminInviteAuthor")
+  adminInvitesReceived          AdminInvite[]               @relation("AdminInviteAccount")
+  adminInvitesRevoked           AdminInvite[]               @relation("AdminInviteRevoker")
+  adminPasswordResets           AdminPasswordReset[]
+  adminMfaRecoveries            AdminMfaRecovery[]          @relation("AdminRecoverySubject")
+  adminMfaRecoveriesReviewed    AdminMfaRecovery[]          @relation("AdminRecoveryReviewer")
+
   @@map("users")
 }
 
@@ -171,6 +180,7 @@ model RefreshSession {
   createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   replacedById String?         @unique @map("replaced_by_id") @db.Uuid
   userAgent    String?         @map("user_agent")
+  scope        SessionScope    @default(APP)
   user         User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   replacedBy   RefreshSession? @relation("SessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
   replaces     RefreshSession? @relation("SessionRotation")
@@ -571,4 +581,115 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Gestão de identidade administrativa (IAM do painel).
+// Nenhuma destas tabelas é lida pelo aplicativo dos estudantes.
+// ---------------------------------------------------------------------------
+
+/// Origem da sessão: o app usa o padrão APP; só a sessão do painel marca ADMIN.
+enum SessionScope {
+  APP
+  ADMIN
+}
+
+enum AdminPermission {
+  MANAGE_ADMINS
+  MANAGE_USERS
+  REVIEW_VERIFICATIONS
+  MODERATE_INCIDENTS
+  VIEW_REPORTS
+  VIEW_AUDIT
+}
+
+enum AdminInviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum AdminRecoveryStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+/// Permissões concedidas a uma conta com papel ADMIN. A ausência de linha é
+/// deliberadamente equivalente a nenhuma permissão: quem gerencia acessos
+/// precisa ter sido autorizado explicitamente.
+model AdminAccess {
+  userId      String            @id @map("user_id") @db.Uuid
+  permissions AdminPermission[] @default([])
+  grantedById String?           @map("granted_by_id") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user        User              @relation("AdminAccessAccount", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy   User?             @relation("AdminAccessGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@map("admin_access")
+}
+
+/// Convite para uma conta administrativa. `tokenHash` guarda só o SHA-256 do
+/// token entregue por e-mail; o token em claro nunca é persistido nem logado.
+model AdminInvite {
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String
+  fullName         String            @map("full_name")
+  tokenHash        String            @unique @map("token_hash")
+  permissions      AdminPermission[] @default([])
+  status           AdminInviteStatus @default(PENDING)
+  invitedById      String            @map("invited_by_id") @db.Uuid
+  userId           String?           @map("user_id") @db.Uuid
+  expiresAt        DateTime          @map("expires_at") @db.Timestamptz(3)
+  emailConfirmedAt DateTime?         @map("email_confirmed_at") @db.Timestamptz(3)
+  acceptedAt       DateTime?         @map("accepted_at") @db.Timestamptz(3)
+  revokedAt        DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedById      String?           @map("revoked_by_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  invitedBy        User              @relation("AdminInviteAuthor", fields: [invitedById], references: [id], onDelete: Restrict)
+  account          User?             @relation("AdminInviteAccount", fields: [userId], references: [id], onDelete: SetNull)
+  revokedBy        User?             @relation("AdminInviteRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([email, status])
+  @@index([status, expiresAt])
+  @@map("admin_invites")
+}
+
+/// Redefinição de senha de conta administrativa. Uso único, expiração curta e
+/// token guardado apenas como hash.
+model AdminPasswordReset {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("admin_password_resets")
+}
+
+/// Recuperação supervisionada do segundo fator: um administrador pede, outro
+/// com MANAGE_ADMINS aprova, e só então nasce o token de uso único.
+model AdminMfaRecovery {
+  id           String              @id @default(uuid()) @db.Uuid
+  userId       String              @map("user_id") @db.Uuid
+  status       AdminRecoveryStatus @default(PENDING)
+  reason       String
+  tokenHash    String?             @unique @map("token_hash")
+  expiresAt    DateTime            @map("expires_at") @db.Timestamptz(3)
+  reviewedById String?             @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime?           @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote   String?             @map("review_note")
+  completedAt  DateTime?           @map("completed_at") @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  user         User                @relation("AdminRecoverySubject", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?               @relation("AdminRecoveryReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("admin_mfa_recoveries")
 }

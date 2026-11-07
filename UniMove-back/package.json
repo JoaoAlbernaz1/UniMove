@@ -29,7 +29,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "admin:recover-mfa": "tsx src/modules/admin/admin-recovery.cli.ts",
+    "test:iam-integration": "npm run build && node test/admin-iam.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "11.2.6",

@@ -5,10 +5,6 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
-import { generateSecret, generateURI, verify } from 'otplib';
-import QRCode from 'qrcode';
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { RoleName, UserStatus } from '../../generated/prisma/enums';
@@ -18,6 +14,12 @@ import {
   encryptTwoFactorSecret,
   isTwoFactorKeyConfigured,
 } from '../auth/two-factor-crypto';
+import {
+  buildRecoveryCodes,
+  matchesTotp,
+  provisionFactor,
+  TWO_FACTOR_ISSUER,
+} from './admin-two-factor';
 
 /** Operator-only API. Never expose this provider through an HTTP controller. */
 @Injectable()
@@ -30,19 +32,17 @@ export class AdminEnrollmentService {
   async begin(emailInput: string) {
     this.assertDedicatedKey();
     const email = emailInput.trim().toLowerCase();
-    const secret = generateSecret();
-    const encrypted = encryptTwoFactorSecret(secret);
+    const factor = await provisionFactor(email);
     await this.prisma.$transaction(async (tx) => {
       const account = await this.lockAccount(tx, email);
       await tx.twoFactorAuth.upsert({
         where: { userId: account.id },
-        create: { userId: account.id, secret: encrypted, enabled: false },
-        update: { secret: encrypted, recoveryCodes: [] },
+        create: { userId: account.id, secret: factor.encryptedSecret, enabled: false },
+        update: { secret: factor.encryptedSecret, recoveryCodes: [] },
       });
       await this.audit(tx, account.id, 'ADMIN_2FA_ENROLLMENT_STARTED');
     });
-    const uri = generateURI({ secret, label: email, issuer: 'UniCarona Admin' });
-    return { secret, qrCode: await QRCode.toDataURL(uri), issuer: 'UniCarona Admin' };
+    return { secret: factor.secret, qrCode: factor.qrCode, issuer: TWO_FACTOR_ISSUER };
   }
 
   async confirm(emailInput: string, codeInput: string) {
@@ -56,21 +56,11 @@ export class AdminEnrollmentService {
       const limitKey = `2fa:${account.id}`;
       await this.limiter.assertAllowed(limitKey);
       const { secret } = decryptTwoFactorSecret(factor.secret);
-      const valid =
-        /^\d{6}$/.test(code) && (await verify({ token: code, secret, epochTolerance: 30 })).valid;
-      if (!valid || !(await this.limiter.claimCode(account.id, code))) {
+      if (!(await matchesTotp(secret, code)) || !(await this.limiter.claimCode(account.id, code))) {
         await this.limiter.recordFailure(limitKey);
         throw new UnauthorizedException('Código de autenticação inválido.');
       }
-      const recoveryCodes = Array.from({ length: 8 }, () => {
-        const raw = randomBytes(5).toString('hex').toUpperCase();
-        return `${raw.slice(0, 5)}-${raw.slice(5)}`;
-      });
-      const hashes = await Promise.all(
-        recoveryCodes.map((value) =>
-          argon2.hash(value.replace('-', ''), { type: argon2.argon2id }),
-        ),
-      );
+      const { codes, hashes } = await buildRecoveryCodes();
       const { count } = await tx.twoFactorAuth.updateMany({
         where: { userId: account.id, enabled: false, secret: factor.secret },
         data: { enabled: true, secret: encryptTwoFactorSecret(secret), recoveryCodes: hashes },
@@ -78,7 +68,50 @@ export class AdminEnrollmentService {
       if (!count) throw new ConflictException('O provisionamento mudou. Inicie novamente.');
       await this.audit(tx, account.id, 'ADMIN_2FA_ENROLLED');
       await this.limiter.reset(limitKey);
-      return { recoveryCodes };
+      return { recoveryCodes: codes };
+    });
+  }
+
+  /**
+   * Procedimento emergencial para o último administrador: apaga o fator atual
+   * para que `begin` possa provisionar outro. Existe somente aqui, chamado pela
+   * CLI do operador, e nunca por HTTP — o caminho supervisionado pelo painel é
+   * AdminRecoveryService, que exige a aprovação de outro administrador.
+   */
+  async resetFactor(emailInput: string) {
+    this.assertDedicatedKey();
+    const email = emailInput.trim().toLowerCase();
+    return this.prisma.$transaction(async (tx) => {
+      // Mesmo lock de linha do provisionamento, mas sem recusar fator já ativo:
+      // apagar um fator ativo é exatamente o objetivo aqui.
+      await tx.$queryRaw`SELECT id FROM users WHERE institutional_email = ${email} FOR UPDATE`;
+      const account = await tx.user.findUnique({
+        where: { institutionalEmail: email },
+        select: {
+          id: true,
+          status: true,
+          deletedAt: true,
+          roles: { select: { role: { select: { name: true } } } },
+          twoFactor: { select: { enabled: true } },
+        },
+      });
+      if (
+        !account ||
+        account.status !== UserStatus.ACTIVE ||
+        account.deletedAt ||
+        !account.roles.some((item) => item.role.name === RoleName.ADMIN)
+      )
+        throw new ForbiddenException('A recuperação emergencial exige uma conta ADMIN ativa.');
+      if (!account.twoFactor)
+        throw new ConflictException('Esta conta não tem segundo fator para recuperar.');
+      // Apagar a linha derruba o segredo e todos os códigos de recuperação.
+      await tx.twoFactorAuth.deleteMany({ where: { userId: account.id } });
+      await tx.refreshSession.updateMany({
+        where: { userId: account.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.audit(tx, account.id, 'ADMIN_2FA_RESET_BY_OPERATOR');
+      return { reset: true, email };
     });
   }
 

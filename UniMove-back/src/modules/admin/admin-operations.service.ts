@@ -16,6 +16,7 @@ import {
   AdminAuditQueryDto,
   AdminIncidentsQueryDto,
   AdminRidesQueryDto,
+  SECURITY_AUDIT_ACTIONS,
   UpdateIncidentDto,
 } from './admin.dto';
 import { maskPlate } from './admin-users.service';
@@ -302,6 +303,9 @@ export class AdminOperationsService {
       AND: [
         { entityType: { notIn: [...AUTH_STATE_ENTITY_TYPES] } },
         ...(query.entityType ? [{ entityType: query.entityType }] : []),
+        // Grupo restringe a lista; ação exata refina dentro dela.
+        ...(query.group === 'security' ? [{ action: { in: [...SECURITY_AUDIT_ACTIONS] } }] : []),
+        ...(query.action ? [{ action: query.action }] : []),
       ],
       ...(query.actorUserId ? { actorUserId: query.actorUserId } : {}),
       ...(query.from || query.to

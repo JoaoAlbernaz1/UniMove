@@ -5,7 +5,7 @@ import * as argon2 from 'argon2';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { AdminPermission, RoleName, SessionScope, UserStatus } from '../../generated/prisma/enums';
 import { AuthAttemptLimiter } from '../auth/auth-attempt-limiter';
 import {
   decryptTwoFactorSecret,
@@ -43,6 +43,7 @@ const accountSelect = {
   deletedAt: true,
   roles: { select: { role: { select: { name: true } } } },
   twoFactor: { select: { secret: true, enabled: true, recoveryCodes: true } },
+  adminAccess: { select: { permissions: true } },
 } as const;
 
 function isAdmin(account: { roles: { role: { name: string } }[] }) {
@@ -257,6 +258,7 @@ export class AdminAuthService {
     fullName: string;
     institutionalEmail: string;
     roles: { role: { name: string } }[];
+    adminAccess?: { permissions: AdminPermission[] } | null;
     twoFactorEnabled: boolean;
     recoveryCodesRemaining?: number;
   }) {
@@ -265,6 +267,9 @@ export class AdminAuthService {
       fullName: account.fullName,
       email: account.institutionalEmail,
       roles: account.roles.map((item) => item.role.name),
+      // O painel usa isto para mostrar só o que a conta pode fazer. A decisão
+      // de verdade continua no servidor, em AdminPermissionsGuard.
+      permissions: account.adminAccess?.permissions ?? [],
       twoFactorEnabled: account.twoFactorEnabled,
       ...(account.recoveryCodesRemaining === undefined
         ? {}
@@ -330,6 +335,9 @@ export class AdminAuthService {
           tokenHash,
           expiresAt: new Date((now + remaining) * 1000),
           userAgent,
+          // Separa a sessão do painel da sessão do aplicativo na mesma tabela:
+          // só o escopo ADMIN é listado e revogável pelo painel.
+          scope: SessionScope.ADMIN,
         },
       });
       if (previous)
