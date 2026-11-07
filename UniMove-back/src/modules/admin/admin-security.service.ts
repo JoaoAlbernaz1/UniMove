@@ -26,6 +26,8 @@ interface FactorSetupTicket {
   type: 'admin_factor_setup';
   /** Segredo novo cifrado com a chave do servidor: o ticket sozinho não o entrega. */
   secret: string;
+  /** Versão do fator anterior, para impedir replay do ticket após a substituição. */
+  factorVersion: string;
 }
 
 /**
@@ -203,7 +205,7 @@ export class AdminSecurityService {
     await this.reauth.assertReauthenticated(actor.id, dto);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: actor.id },
-      select: { institutionalEmail: true, twoFactor: { select: { enabled: true } } },
+      select: { institutionalEmail: true, twoFactor: { select: { enabled: true, updatedAt: true } } },
     });
     if (account.twoFactor?.enabled !== true)
       throw new ConflictException({
@@ -213,7 +215,12 @@ export class AdminSecurityService {
     const factor = await provisionFactor(account.institutionalEmail);
     // O fator atual continua valendo até a confirmação: nada é gravado aqui.
     const setupTicket = await this.jwt.signAsync(
-      { sub: actor.id, type: 'admin_factor_setup', secret: factor.encryptedSecret },
+      {
+        sub: actor.id,
+        type: 'admin_factor_setup',
+        secret: factor.encryptedSecret,
+        factorVersion: account.twoFactor.updatedAt.toISOString(),
+      },
       {
         secret: this.config.getOrThrow('auth.accessSecret'),
         expiresIn: SETUP_TICKET_TTL_SECONDS,
@@ -250,7 +257,12 @@ export class AdminSecurityService {
     } catch {
       ticket = undefined;
     }
-    if (ticket?.type !== 'admin_factor_setup' || ticket.sub !== actor.id)
+    if (
+      ticket?.type !== 'admin_factor_setup' ||
+      ticket.sub !== actor.id ||
+      !ticket.factorVersion ||
+      !Number.isFinite(Date.parse(ticket.factorVersion))
+    )
       throw new UnauthorizedException({
         code: 'ADMIN_FACTOR_SETUP_EXPIRED',
         message: 'O cadastro do autenticador expirou. Comece de novo.',
@@ -271,24 +283,42 @@ export class AdminSecurityService {
     return this.prisma.$transaction(async (tx) => {
       // enabled: true na condição garante que ainda havia fator a substituir.
       const { count } = await tx.twoFactorAuth.updateMany({
-        where: { userId: actor.id, enabled: true },
+        where: {
+          userId: actor.id,
+          enabled: true,
+          // Compare-and-swap: o ticket só vale para a versão anterior do fator.
+          // Após uma primeira confirmação, a versão muda e qualquer replay falha.
+          updatedAt: new Date(ticket.factorVersion),
+        },
         data: { secret: encryptTwoFactorSecret(secret), recoveryCodes: hashes },
       });
       if (!count)
         throw new ConflictException({
-          code: 'TWO_FACTOR_NOT_ENABLED',
-          message: 'O segundo fator mudou durante a substituição. Comece de novo.',
+          code: 'ADMIN_FACTOR_SETUP_STALE',
+          message: 'O autenticador mudou desde o início da configuração. Comece de novo.',
         });
+      // O fator antigo deixa de validar novos logins. As demais sessões
+      // administrativas devem cair, sem encerrar a sessão que concluiu a troca.
+      const { count: sessionsRevoked } = await tx.refreshSession.updateMany({
+        where: {
+          userId: actor.id,
+          scope: SessionScope.ADMIN,
+          revokedAt: null,
+          ...(actor.sid ? { id: { not: actor.sid } } : {}),
+        },
+        data: { revokedAt: new Date() },
+      });
       await tx.auditLog.create({
         data: {
           actorUserId: actor.id,
           action: 'ADMIN_2FA_REPLACED',
           entityType: 'User',
           entityId: actor.id,
+          metadata: { sessionsRevoked },
         },
       });
       // Códigos antigos morreram com o fator antigo: os novos saem agora, uma vez.
-      return { replaced: true, recoveryCodes: codes };
+      return { replaced: true, recoveryCodes: codes, sessionsRevoked };
     });
   }
 
