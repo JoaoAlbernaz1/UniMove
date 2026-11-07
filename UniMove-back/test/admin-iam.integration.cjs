@@ -941,6 +941,18 @@ async function main() {
     assert.ok(porAcao.body.every((entry) => entry.action === 'ADMIN_LOGIN'));
   });
 
+  await it('as quatro tabelas IAM negam acesso Data API com RLS habilitado', async () => {
+    const rows = await prisma.$queryRaw`
+      SELECT c.relname, c.relrowsecurity
+      FROM pg_class AS c
+      JOIN pg_namespace AS n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname IN ('admin_access', 'admin_invites', 'admin_password_resets', 'admin_mfa_recoveries')
+    `;
+    assert.equal(rows.length, 4, 'todas as tabelas IAM devem existir no schema public');
+    assert.ok(rows.every((row) => row.relrowsecurity === true), 'RLS deve estar ativo');
+  });
+
   console.log('\nAuditoria e segredos');
 
   await it('a auditoria registra os eventos sensíveis sem token, código ou segredo', async () => {
