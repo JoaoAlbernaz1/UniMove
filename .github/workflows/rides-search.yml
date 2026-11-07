@@ -1,0 +1,85 @@
+name: Busca de caronas
+
+# Roda a correção da busca contra um PostgreSQL descartável, igual ao que as
+# suítes usam na máquina: imagem oficial, banco terminado em _test e locale
+# padrão do contêiner (UTF8 com LC_CTYPE=C), que é justamente onde o acento
+# deixava de casar.
+on:
+  pull_request:
+    paths:
+      - 'UniMove-back/**'
+      - '.github/workflows/rides-search.yml'
+  push:
+    branches: [fix/busca-local-e-datas]
+    paths:
+      - 'UniMove-back/**'
+      - '.github/workflows/rides-search.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  busca:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: unimove_test
+          POSTGRES_USER: unimove
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U unimove"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: UniMove-back
+    env:
+      NODE_ENV: test
+      # As suítes recusam banco que não seja local e sem o sufixo _test.
+      DATABASE_URL: postgresql://unimove:fixture-only-password@127.0.0.1:5432/unimove_test
+      JWT_ACCESS_SECRET: fixture-only-access-secret-000000000000
+      JWT_REFRESH_SECRET: fixture-only-refresh-secret-00000000000
+      TWO_FACTOR_ENCRYPTION_KEY: fixture-only-factor-secret-000000000000
+      ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS: ucb.edu.br
+      # O erro por trás de um 5xx aparece no log como arquivo e linha, sem
+      # mensagem nem dado de pessoa. Foi assim que a causa do 500 foi achada.
+      INTEGRATION_LOG: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Histórico completo para comparar com a main no passo do lint.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UniMove-back/package-lock.json
+      - run: npm ci --include=dev
+      - run: npm run prisma:generate
+      - run: npm run prisma:deploy
+
+      # O lint do repositório inteiro ainda não passa: 158 erros de formatação
+      # e de variáveis com sublinhado, em 21 arquivos que nunca passaram pelo
+      # prettier. É dívida anterior a esta branch e está descrita no PR. Aqui o
+      # lint roda sobre os arquivos que este PR altera, sem exceção e sem
+      # regra desligada: se a correção introduzir um problema, o CI falha.
+      - name: Lint dos arquivos alterados
+        run: |
+          ALVOS=$(git diff --name-only --diff-filter=d origin/main...HEAD -- 'UniMove-back/**/*.ts' | sed 's|^UniMove-back/||')
+          if [ -z "$ALVOS" ]; then
+            echo 'Nenhum .ts alterado neste PR.'
+            exit 0
+          fi
+          echo "Arquivos: $ALVOS"
+          npx eslint $ALVOS --max-warnings 0
+
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:booking
+      - run: npm run test:search-regression

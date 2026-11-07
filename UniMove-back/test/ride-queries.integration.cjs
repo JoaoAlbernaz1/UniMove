@@ -23,8 +23,6 @@ const licensePhoto = () => sharp({ create: { width: 300, height: 180, channels: 
 const { AppModule } = require('../dist/src/app.module.js');
 const { PrismaService } = require('../dist/src/database/prisma.service.js');
 const { HttpExceptionFilter } = require('../dist/src/common/filters/http-exception.filter.js');
-const { PrismaClient } = require('../dist/src/generated/prisma/client.js');
-const { PrismaPg } = require('@prisma/adapter-pg');
 const { OfferRidesService } = require('../dist/src/modules/rides/offer-rides.service.js');
 const { RideQueriesService } = require('../dist/src/modules/rides/ride-queries.service.js');
 const { SearchRidesDto } = require('../dist/src/modules/rides/search-rides.dto.js');
@@ -47,9 +45,7 @@ function randomCpf() {
   return digits;
 }
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+const prisma = new PrismaService();
 const rollback = new Error('ROLLBACK_TEST_DATA');
 
 async function verifyAchievements(http, tx, subjectId, authorization, otherDriverId, otherVehicleId, originId, destinationId) {
@@ -129,6 +125,7 @@ async function verifyHttp(tx, driverId, filters) {
     role: tx.role,
     userRole: tx.userRole,
     ride: tx.ride,
+    rideRequest: tx.rideRequest,
     rating: tx.rating,
     routeTemplate: tx.routeTemplate,
     location: tx.location,
@@ -146,7 +143,7 @@ async function verifyHttp(tx, driverId, filters) {
     .overrideProvider(PrismaService)
     .useValue(connection)
     .compile();
-  const app = module.createNestApplication({ logger: false });
+  const app = module.createNestApplication({ logger: process.env.INTEGRATION_LOG === '1' ? ['error', 'warn'] : false });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),

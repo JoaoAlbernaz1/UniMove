@@ -32,6 +32,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
           path: request.path,
           status,
           errorType: exception instanceof Error ? exception.name : typeof exception,
+          // Só nas suítes de integração, e nunca em produção: o primeiro quadro
+          // da pilha diz o arquivo e a linha onde o erro nasceu, que é o que
+          // falta quando um 5xx aparece no runner. Segue sem mensagem, sem
+          // parâmetro da consulta e sem dado de pessoa.
+          ...(process.env.INTEGRATION_LOG === '1' && process.env.NODE_ENV !== 'production'
+            ? {
+                origem:
+                  exception instanceof Error ? exception.stack?.split('\n')[1]?.trim() : undefined,
+              }
+            : {}),
         }),
       );
     }

@@ -20,6 +20,16 @@ function normalized(value = '') {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+// `lower()` depende do locale do banco: com LC_CTYPE=C, que é o padrão da
+// imagem oficial do PostgreSQL e do serviço usado no CI, ele não rebaixa letra
+// acentuada — `lower('ÁGUAS CLARAS')` devolve 'Águas claras'. Tirando o acento
+// ANTES, com as maiúsculas também na tabela, sobra só ASCII para o `lower`, e
+// aí o resultado é o mesmo em qualquer locale.
+const COM_ACENTO = 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç';
+const SEM_ACENTO = 'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc';
+const semAcento = (coluna: Prisma.Sql) =>
+  Prisma.sql`lower(translate(${coluna}, ${COM_ACENTO}, ${SEM_ACENTO}))`;
+
 @Injectable()
 export class RideQueriesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -56,11 +66,11 @@ export class RideQueriesService {
     ];
     if (query.origin?.trim())
       conditions.push(
-        Prisma.sql`position(${normalized(query.origin)} in translate(lower(o.name), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')) > 0`,
+        Prisma.sql`position(${normalized(query.origin)} in ${semAcento(Prisma.sql`o.name`)}) > 0`,
       );
     if (query.destination?.trim())
       conditions.push(
-        Prisma.sql`position(${normalized(query.destination)} in translate(lower(d.name), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')) > 0`,
+        Prisma.sql`position(${normalized(query.destination)} in ${semAcento(Prisma.sql`d.name`)}) > 0`,
       );
     if (query.date)
       conditions.push(

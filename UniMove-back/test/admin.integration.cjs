@@ -33,16 +33,13 @@ const request = require('supertest');
 const { generate, generateSecret } = require('otplib');
 const { Test } = require('@nestjs/testing');
 const { ValidationPipe } = require('@nestjs/common');
-const { PrismaPg } = require('@prisma/adapter-pg');
 const { AppModule } = require('../dist/src/app.module.js');
 const { HttpExceptionFilter } = require('../dist/src/common/filters/http-exception.filter.js');
-const { PrismaClient } = require('../dist/src/generated/prisma/client.js');
+const { PrismaService } = require('../dist/src/database/prisma.service.js');
 const { encryptTwoFactorSecret } = require('../dist/src/modules/auth/two-factor-crypto.js');
 const { AdminEnrollmentService } = require('../dist/src/modules/admin/admin-enrollment.service.js');
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+const prisma = new PrismaService();
 const API = '/api/v1';
 const PASSWORD = 'SenhaForte123!';
 let http;
