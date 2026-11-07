@@ -1,0 +1,83 @@
+name: Backend and admin integration
+
+on:
+  pull_request:
+    paths:
+      - 'UniMove-back/**'
+      - 'UniMove-front/**'
+      - 'render.yaml'
+      - '.github/workflows/backend-admin.yml'
+  push:
+    branches: [main, feat/admin-backend-integration]
+    paths:
+      - 'UniMove-back/**'
+      - 'UniMove-front/**'
+      - 'render.yaml'
+      - '.github/workflows/backend-admin.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: unimove_test
+          POSTGRES_USER: unimove
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U unimove"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: UniMove-back
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://unimove:fixture-only-password@127.0.0.1:5432/unimove_test
+      JWT_ACCESS_SECRET: fixture-only-access-secret-000000000000
+      JWT_REFRESH_SECRET: fixture-only-refresh-secret-00000000000
+      TWO_FACTOR_ENCRYPTION_KEY: fixture-only-factor-secret-000000000000
+      ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS: ucb.edu.br
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UniMove-back/package-lock.json
+      - run: npm ci --include=dev
+      - run: npm run prisma:generate
+      - run: npm run prisma:deploy
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # A busca foi corrigida no PR #15. Qualquer falha aqui bloqueia o merge.
+      - run: npm run test:integration
+      - run: npm run test:booking
+      - run: npm run test:search-regression
+      # A reprodução do último admin usa um banco ainda sem fixtures ADMIN.
+      - run: npm run test:security-integration
+      - run: npm run test:admin-integration
+      - run: npm run build
+  student-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: UniMove-front
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: UniMove-front/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint

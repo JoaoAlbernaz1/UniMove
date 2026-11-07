@@ -7,6 +7,11 @@ import { SettingsController } from './settings.controller';
 import { HomeIndicatorsController, HomeIndicatorsService } from './home-indicators.controller';
 @Module({
   controllers: [UsersController, SettingsController, HomeIndicatorsController],
-  providers: [AchievementsService, ProfilePhotoService, AccountDeletionService, HomeIndicatorsService],
+  providers: [
+    AchievementsService,
+    ProfilePhotoService,
+    AccountDeletionService,
+    HomeIndicatorsService,
+  ],
 })
 export class UsersModule {}

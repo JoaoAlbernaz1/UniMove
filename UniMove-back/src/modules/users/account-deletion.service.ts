@@ -9,6 +9,7 @@ import {
   UserStatus,
 } from '../../generated/prisma/enums';
 import { PrismaService } from '../../database/prisma.service';
+import { assertNotLastAdmin, lockAdminInvariant } from '../admin/admin-invariants';
 
 @Injectable()
 export class AccountDeletionService {
@@ -29,8 +30,10 @@ export class AccountDeletionService {
       type: argon2.argon2id,
     });
 
-    await this.prisma.$transaction(
+    const deletion = this.prisma.$transaction(
       async (tx) => {
+        // Mesma ordem usada pela suspensão: primeiro o invariante, depois a conta.
+        await lockAdminInvariant(tx);
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
         const current = await tx.user.findUniqueOrThrow({
           where: { id: userId },
@@ -38,6 +41,7 @@ export class AccountDeletionService {
         });
         if (current.status !== UserStatus.ACTIVE)
           throw new UnauthorizedException('Conta indisponível para exclusão.');
+        await assertNotLastAdmin(tx, userId);
 
         const now = new Date();
         const activeRideFilter = {
@@ -109,19 +113,35 @@ export class AccountDeletionService {
           where: { OR: [{ reportedById: userId }, { reportedUserId: userId }] },
           data: { description: 'Descrição removida após exclusão da conta' },
         });
+        // O autor de uma decisão sobre terceiros continua ligado a ela. A conta fica
+        // anonimizada, então isso não expõe a pessoa, e excluir a conta não apaga o rastro.
         await tx.auditLog.updateMany({
-          where: { OR: [{ actorUserId: userId }, { entityId: userId }] },
+          where: {
+            OR: [
+              { entityId: userId },
+              {
+                actorUserId: userId,
+                NOT: {
+                  OR: [
+                    { action: { startsWith: 'ADMIN_' } },
+                    { action: { startsWith: 'ACADEMIC_VERIFICATION_' } },
+                    { action: 'INCIDENT_UPDATED' },
+                  ],
+                },
+              },
+            ],
+          },
           data: { actorUserId: null, entityId: null, metadata: Prisma.JsonNull, ip: null },
         });
-        await tx.academicVerification.updateMany({
-          where: { reviewedById: userId },
-          data: { reviewedById: null },
-        });
+        // Retém autoria/decisão sobre terceiros, mas não o IP pessoal do autor.
+        await tx.auditLog.updateMany({ where: { actorUserId: userId }, data: { ip: null } });
         await tx.academicVerification.deleteMany({ where: { userId } });
         await tx.profilePhoto.deleteMany({ where: { userId } });
         await tx.driverLicense.deleteMany({ where: { userId } });
         await tx.userRole.deleteMany({ where: { userId } });
         await tx.refreshSession.deleteMany({ where: { userId } });
+        await tx.twoFactorAuth.deleteMany({ where: { userId } });
+        await tx.pushDevice.deleteMany({ where: { userId } });
 
         await tx.user.update({
           where: { id: userId },
@@ -130,6 +150,7 @@ export class AccountDeletionService {
             institutionalEmail: `deleted+${userId}@deleted.invalid`,
             cpf: `EXCLUIDO-${userId}`,
             studentNumber: null,
+            phone: null,
             course: null,
             semester: null,
             bio: null,
@@ -149,5 +170,21 @@ export class AccountDeletionService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    await deletion.catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        const adapterError = error.meta?.driverAdapterError as
+          { cause?: { originalCode?: string } } | undefined;
+        const postgresCode = error.meta?.code ?? adapterError?.cause?.originalCode;
+        if (
+          error.code === 'P2034' ||
+          (error.code === 'P2010' && (postgresCode === '40001' || postgresCode === '40P01'))
+        )
+          throw new ConflictException({
+            code: 'ACCOUNT_CONCURRENT_UPDATE',
+            message: 'A conta foi alterada durante a exclusão. Atualize e tente novamente.',
+          });
+      }
+      throw error;
+    });
   }
 }

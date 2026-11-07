@@ -7,9 +7,12 @@ import { validate } from 'class-validator';
 import { RideQueriesService } from './ride-queries.service';
 
 describe('Ride booking', () => {
-  it.each([0, 2, 3, 4, 5, 6, 7, 1.5, '1', null, undefined])('rejects a seat count of %p', async (seats) => {
-    expect(await validate(plainToInstance(RequestRideDto, { seats }))).not.toHaveLength(0);
-  });
+  it.each([0, 2, 3, 4, 5, 6, 7, 1.5, '1', null, undefined])(
+    'rejects a seat count of %p',
+    async (seats) => {
+      expect(await validate(plainToInstance(RequestRideDto, { seats }))).not.toHaveLength(0);
+    },
+  );
   it('accepts exactly one seat', async () => {
     expect(await validate(plainToInstance(RequestRideDto, { seats: 1 }))).toHaveLength(0);
   });
@@ -71,7 +74,7 @@ describe('Ride booking', () => {
 
   it('rejects another pending request, confirmed reservation or driven ride at the same minute', async () => {
     const { controller, tx } = setup();
-    tx.ride.findFirst.mockResolvedValue({ id: 'other-ride' } as never);
+    tx.ride.findFirst.mockResolvedValue({ id: 'other-ride' });
     await expect(controller.request(passenger, 'ride', { seats: 1 })).rejects.toThrow(
       'neste horário',
     );
@@ -91,13 +94,21 @@ describe('Ride booking', () => {
 
   it('blocks a new request even at another time while one is pending', async () => {
     const { controller, tx } = setup();
-    tx.rideRequest.findFirst.mockResolvedValue({ id: 'pending-other-time' } as never);
-    await expect(controller.request(passenger, 'ride', { seats: 1 })).rejects.toThrow('aguardando o motorista');
+    tx.rideRequest.findFirst.mockResolvedValue({ id: 'pending-other-time' });
+    await expect(controller.request(passenger, 'ride', { seats: 1 })).rejects.toThrow(
+      'aguardando o motorista',
+    );
     expect(tx.rideRequest.create).not.toHaveBeenCalled();
-    expect(tx.rideRequest.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
-      passengerId: passenger.id, status: 'PENDING', expiresAt: { gt: expect.any(Date) },
-      ride: expect.objectContaining({ departureAt: { gt: expect.any(Date) } }),
-    }) }));
+    expect(tx.rideRequest.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          passengerId: passenger.id,
+          status: 'PENDING',
+          expiresAt: { gt: expect.any(Date) },
+          ride: expect.objectContaining({ departureAt: { gt: expect.any(Date) } }),
+        }),
+      }),
+    );
   });
 
   it.each(['CANCELLED', 'COMPLETED', 'IN_PROGRESS'])('rejects a %s ride', async (status) => {
@@ -133,15 +144,13 @@ describe('Ride booking', () => {
     const prisma = {
       rideRequest: { findFirst: jest.fn().mockResolvedValue(null) },
       ride: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'ride',
-            driverId: 'driver',
-            status: 'OPEN',
-            departureAt: future(),
-            requests: [{ status: 'PENDING', expiresAt: new Date(0) }],
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ride',
+          driverId: 'driver',
+          status: 'OPEN',
+          departureAt: future(),
+          requests: [{ status: 'PENDING', expiresAt: new Date(0) }],
+        }),
       },
       $queryRaw: jest.fn().mockResolvedValue([{ availableSeats: 1 }]),
     };
@@ -156,11 +165,22 @@ describe('Ride booking', () => {
 
   it('hides the request action on other ride details while waiting', async () => {
     const prisma = {
-      ride: { findUnique: jest.fn().mockResolvedValue({ id: 'other-ride', driverId: 'driver', status: 'OPEN', departureAt: future(), requests: [] }) },
+      ride: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'other-ride',
+          driverId: 'driver',
+          status: 'OPEN',
+          departureAt: future(),
+          requests: [],
+        }),
+      },
       rideRequest: { findFirst: jest.fn().mockResolvedValue({ id: 'pending-request' }) },
       $queryRaw: jest.fn().mockResolvedValue([{ availableSeats: 2 }]),
     };
-    const details = await new RideQueriesService(prisma as unknown as PrismaService).details('other-ride', passenger.id);
+    const details = await new RideQueriesService(prisma as unknown as PrismaService).details(
+      'other-ride',
+      passenger.id,
+    );
     expect(details.hasPendingRequest).toBe(true);
     expect(details.canRequest).toBe(false);
     expect(details.availableSeats).toBe(2);

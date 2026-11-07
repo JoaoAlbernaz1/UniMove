@@ -4,9 +4,10 @@
 # é marcada com `sync: false` e preenchida no painel do Render; os segredos de
 # JWT são sorteados lá na primeira criação.
 #
-# Como usar: no Render, New > Blueprint, aponte para este repositório. Ao subir,
-# ele pede o valor de DATABASE_URL — cole a string do Supabase, porta 5432, com
-# os dois parâmetros:
+# Este arquivo prepara o serviço EXISTENTE unimove-api, do repositório UniMove.
+# Não criar outro Blueprint, serviço ou banco para integrar o painel. Mudanças
+# no Render e deploy dependem de autorização; ver docs/ADMIN_BACKEND_INTEGRATION.md.
+# Preservar a DATABASE_URL existente e seus parâmetros, incluindo:
 #
 #   ...supabase.com:5432/postgres?sslmode=require&uselibpqcompat=true
 #
@@ -14,10 +15,14 @@
 # como `verify-full`, não valida o certificado do pooler e toda consulta falha
 # com erro 500 — mesmo com a API subindo normalmente e o /health respondendo.
 #
-# O banco já existe e já está migrado; o start apenas confere.
+# O banco já existe. Este start NÃO executa migrações; pendências de schema
+# exigem conferência e autorização separadas antes da publicação.
 services:
   - type: web
     name: unimove-api
+    repo: https://github.com/JoaoAlbernaz1/UniMove
+    branch: main
+    autoDeployTrigger: off
     runtime: node
     plan: free
     # O banco Supabase está em ca-central-1 (Montreal). Ohio é a região gratuita
@@ -29,9 +34,8 @@ services:
     # devDependencies, e o compilador (@nestjs/cli, typescript) mora lá. Sem
     # isso o build morre em `sh: 1: nest: not found`.
     buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
-    # O plano gratuito não tem preDeployCommand, então a migração roda no start.
-    # `migrate deploy` é idempotente: com tudo aplicado, ele não faz nada.
-    startCommand: npm run prisma:deploy && npm run start:prod
+    # Nenhuma nova migração nesta integração. Não executar migrate deploy no start.
+    startCommand: npm run start:prod
     envVars:
       - key: NODE_VERSION
         value: "24"
@@ -46,6 +50,18 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Cifra os segredos de 2FA; >=32 caracteres. Preservar se já existir.
+      # Em serviço existente, sync:false NÃO adiciona a variável em novo sync:
+      # configurar manualmente após autorização, sem exibir o valor.
+      - key: TWO_FACTOR_ENCRYPTION_KEY
+        sync: false
+      # Origens do painel administrativo, separadas por vírgula. Preenchida no painel
+      # do Render depois de criar o projeto na Vercel. Vazia, o painel não autentica.
+      - key: ADMIN_PANEL_ORIGINS
+        sync: false
+      # Apenas o proxy de entrada do Render; nunca confiar em toda a cadeia XFF.
+      - key: TRUST_PROXY_HOPS
+        value: "1"
       - key: JWT_ACCESS_EXPIRATION
         value: 15m
       - key: JWT_REFRESH_EXPIRATION

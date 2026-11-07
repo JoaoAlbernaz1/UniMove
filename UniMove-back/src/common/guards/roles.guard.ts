@@ -13,8 +13,15 @@ export class RolesGuard implements CanActivate {
     ]);
     if (!roles?.length) return true;
     const user = context.switchToHttp().getRequest<{ user: AuthUser }>().user;
-    if (!roles.some((role) => user.roles.includes(role)))
-      throw new ForbiddenException('Perfil sem permissão para esta operação.');
+    const granted = roles.filter((role) => user.roles.includes(role));
+    if (!granted.length) throw new ForbiddenException('Perfil sem permissão para esta operação.');
+    // Vale para qualquer cliente, painel ou app: senha sozinha não abre rota administrativa.
+    if (granted.every((role) => role === RoleName.ADMIN) && !user.mfa)
+      throw new ForbiddenException({
+        code: 'ADMIN_2FA_REQUIRED',
+        message:
+          'Ative o segundo fator e entre novamente para usar as ferramentas administrativas.',
+      });
     return true;
   }
 }

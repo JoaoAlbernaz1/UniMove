@@ -5,7 +5,7 @@ import { IsDateString, IsInt, IsUUID, Matches, Max, Min } from 'class-validator'
 import { ConfigService } from '@nestjs/config';
 import { RequireAcademicVerification } from '../../common/decorators/profile.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { RoleName, Weekday } from '../../generated/prisma/enums';
+import { RoleName, UserStatus, Weekday } from '../../generated/prisma/enums';
 import { heldSeats } from '../rides/ride-availability';
 
 class SearchDto {
@@ -42,6 +42,7 @@ export class MatchingController {
         active: true,
         vehicle: { active: true },
         driver: {
+          status: UserStatus.ACTIVE,
           driverLicense: { isNot: null },
           OR: [
             { academicVerification: { is: { status: 'APPROVED' } } },
@@ -59,45 +60,60 @@ export class MatchingController {
       (route) => Math.abs(this.minutes(route.departureTime) - desiredMinutes) <= tolerance,
     );
     const rides = await Promise.all(
-      compatible.map((route) => this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM users WHERE id = ${route.driverId}::uuid FOR UPDATE`;
-        const current = await tx.routeTemplate.findFirst({ where: { id: route.id, active: true, vehicle: { active: true } } });
-        if (!current) return null;
-        return tx.ride.upsert({
-          where: {
-            routeTemplateId_departureAt: {
-              routeTemplateId: route.id,
-              departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+      compatible.map((route) =>
+        this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM users WHERE id = ${route.driverId}::uuid FOR UPDATE`;
+          const current = await tx.routeTemplate.findFirst({
+            where: { id: route.id, active: true, vehicle: { active: true } },
+          });
+          if (!current) return null;
+          return tx.ride.upsert({
+            where: {
+              routeTemplateId_departureAt: {
+                routeTemplateId: route.id,
+                departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+              },
             },
-          },
-          update: {},
-          create: {
-            routeTemplateId: route.id,
-            driverId: route.driverId,
-            vehicleId: route.vehicleId,
-            originLocationId: route.originLocationId,
-            destinationLocationId: route.destinationLocationId,
-            departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
-            totalSeats: route.availableSeats,
-            availableSeats: route.availableSeats,
-          },
-          include: {
-            driver: { select: { id: true, fullName: true } },
-            vehicle: true,
-            originLocation: true,
-            destinationLocation: true,
-          },
-        });
-      }),
+            update: {},
+            create: {
+              routeTemplateId: route.id,
+              driverId: route.driverId,
+              vehicleId: route.vehicleId,
+              originLocationId: route.originLocationId,
+              destinationLocationId: route.destinationLocationId,
+              departureAt: new Date(`${dto.date}T${route.departureTime}:00-03:00`),
+              totalSeats: route.availableSeats,
+              availableSeats: route.availableSeats,
+            },
+            include: {
+              driver: { select: { id: true, fullName: true } },
+              vehicle: true,
+              originLocation: true,
+              destinationLocation: true,
+            },
+          });
+        }),
       ),
     );
     const now = new Date();
-    const available = await Promise.all(rides.filter((ride) => ride !== null).map(async (ride) => ({
-      ...ride,
-      availableSeats: Math.max(0, ride.availableSeats - await heldSeats(this.prisma, ride.id, now)),
-    })));
+    const available = await Promise.all(
+      rides
+        .filter((ride) => ride !== null)
+        .map(async (ride) => ({
+          ...ride,
+          availableSeats: Math.max(
+            0,
+            ride.availableSeats - (await heldSeats(this.prisma, ride.id, now)),
+          ),
+        })),
+    );
     return available
-      .filter((ride) => ['OPEN', 'SCHEDULED'].includes(ride.status) && ride.departureAt > now && ride.availableSeats >= dto.seats)
+      .filter(
+        (ride) =>
+          ['OPEN', 'SCHEDULED'].includes(ride.status) &&
+          ride.departureAt > now &&
+          ride.availableSeats >= dto.seats,
+      )
       .sort(
         (a, b) =>
           Math.abs(

@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import type { JwtService } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import type { Namespace, Socket } from 'socket.io';
 import type { Prisma } from '../../generated/prisma/client';
 import type { ChatService } from './chat.service';
@@ -201,5 +201,63 @@ describe('ChatGateway', () => {
     expect(verifyAsync).toHaveBeenCalledWith('access-token', { secret: 'test-secret' });
     expect(client.data.userId).toBe(userId);
     expect(next).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe('ChatGateway token scopes with real JWT verification', () => {
+  const jwt = new JwtService();
+  const gateway = new ChatGateway({} as ChatService, jwt, {
+    get: () => [],
+    getOrThrow: () => 'synthetic-chat-access-secret',
+  } as unknown as ConfigService);
+  let authenticate: (client: Socket, next: (error?: Error) => void) => void;
+
+  beforeEach(() => {
+    gateway.afterInit({
+      use: (handler: typeof authenticate) => {
+        authenticate = handler;
+      },
+    } as unknown as Namespace);
+  });
+
+  const handshake = async (claims: Record<string, unknown>) => {
+    const token = await jwt.signAsync(
+      { sub: userId, type: 'access', ...claims },
+      { secret: 'synthetic-chat-access-secret', expiresIn: 300 },
+    );
+    const client = {
+      handshake: { headers: {}, auth: { token } },
+      data: {},
+      once: jest.fn(),
+      disconnect: jest.fn(),
+    } as unknown as Socket;
+    const error = await new Promise<Error | undefined>((resolve) => authenticate(client, resolve));
+    return { client, error };
+  };
+
+  it('rejects a valid administrative cookie token before attaching a socket identity or expiry timer', async () => {
+    const { client, error } = await handshake({
+      scope: 'admin',
+      sid: 'synthetic-admin-session',
+      mfa: true,
+    });
+    try {
+      expect(error).toBeInstanceOf(Error);
+      expect(client.data.userId).toBeUndefined();
+      expect(client.data.tokenExpiryTimer).toBeUndefined();
+    } finally {
+      gateway.handleDisconnect(client);
+    }
+  });
+
+  it('preserves normal student app access and cleans up its token expiry timer', async () => {
+    const { client, error } = await handshake({ roles: ['PASSENGER'], mfa: false });
+    try {
+      expect(error).toBeUndefined();
+      expect(client.data.userId).toBe(userId);
+      expect(client.data.tokenExpiryTimer).toBeDefined();
+    } finally {
+      gateway.handleDisconnect(client);
+    }
   });
 });

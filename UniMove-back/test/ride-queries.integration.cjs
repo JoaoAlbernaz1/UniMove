@@ -1,5 +1,17 @@
 // Executar após npm run build. Todos os cadastros são revertidos no PostgreSQL.
 require('dotenv/config');
+const target = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid');
+if (!['127.0.0.1', 'localhost'].includes(target.hostname) || !target.pathname.endsWith('_test') || process.env.NODE_ENV === 'production') {
+  console.error('Recusado: integração de estudantes exige banco local com sufixo _test.');
+  process.exit(2);
+}
+process.env.JWT_ACCESS_SECRET ??= 'student-integration-access-secret-0123456789';
+process.env.JWT_REFRESH_SECRET ??= 'student-integration-refresh-secret-0123456789';
+process.env.TWO_FACTOR_ENCRYPTION_KEY ??= 'student-integration-factor-key-0123456789';
+process.env.ALLOWED_INSTITUTIONAL_EMAIL_DOMAINS ??= 'ucb.edu.br';
+// Testes locais nunca entregam mensagens por transportes configurados no ambiente.
+process.env.SMTP_HOST = '';
+process.env.TWILIO_ACCOUNT_SID = '';
 const assert = require('node:assert/strict');
 const { randomUUID, randomInt } = require('node:crypto');
 const { Test } = require('@nestjs/testing');
@@ -11,8 +23,6 @@ const licensePhoto = () => sharp({ create: { width: 300, height: 180, channels: 
 const { AppModule } = require('../dist/src/app.module.js');
 const { PrismaService } = require('../dist/src/database/prisma.service.js');
 const { HttpExceptionFilter } = require('../dist/src/common/filters/http-exception.filter.js');
-const { PrismaClient } = require('../dist/src/generated/prisma/client.js');
-const { PrismaPg } = require('@prisma/adapter-pg');
 const { OfferRidesService } = require('../dist/src/modules/rides/offer-rides.service.js');
 const { RideQueriesService } = require('../dist/src/modules/rides/ride-queries.service.js');
 const { SearchRidesDto } = require('../dist/src/modules/rides/search-rides.dto.js');
@@ -35,9 +45,6 @@ function randomCpf() {
   return digits;
 }
 
-// Mesma sessão da aplicação, inclusive o fuso em UTC: um cliente montado à
-// parte grava o instante deslocado quando o servidor de banco está em outro
-// fuso, e o teste deixaria de medir o que roda em produção.
 const prisma = new PrismaService();
 const rollback = new Error('ROLLBACK_TEST_DATA');
 
@@ -118,18 +125,17 @@ async function verifyHttp(tx, driverId, filters) {
     role: tx.role,
     userRole: tx.userRole,
     ride: tx.ride,
-    // A busca passou a olhar a solicitação pendente de quem pesquisa. Sem este
-    // modelo no dublê, `prisma.rideRequest` fica indefinido e GET /rides
-    // responde 500 — era a falha que aparecia só no CI.
     rideRequest: tx.rideRequest,
     rating: tx.rating,
     routeTemplate: tx.routeTemplate,
     location: tx.location,
     vehicle: tx.vehicle,
     driverLicense: tx.driverLicense,
+    twoFactorAuth: tx.twoFactorAuth,
     refreshSession: tx.refreshSession,
     auditLog: tx.auditLog,
     $queryRaw: tx.$queryRaw.bind(tx),
+    $executeRaw: tx.$executeRaw.bind(tx),
     $transaction: (callback) =>
       typeof callback === 'function' ? callback(tx) : Promise.all(callback),
   };
@@ -137,13 +143,7 @@ async function verifyHttp(tx, driverId, filters) {
     .overrideProvider(PrismaService)
     .useValue(connection)
     .compile();
-  // Silencioso por padrão. Com INTEGRATION_LOG=1 o filtro de exceções passa a
-  // imprimir o que está por trás de um 5xx, que é justamente o que falta quando
-  // a suíte quebra no runner. O filtro publica apenas requestId, método, rota,
-  // status e o nome do erro — nenhum dado de pessoa.
-  const app = module.createNestApplication({
-    logger: process.env.INTEGRATION_LOG === '1' ? ['error', 'warn'] : false,
-  });
+  const app = module.createNestApplication({ logger: process.env.INTEGRATION_LOG === '1' ? ['error', 'warn'] : false });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
@@ -186,10 +186,8 @@ async function verifyHttp(tx, driverId, filters) {
     assert.equal(editedReloaded.body.semester, 4);
     assert.equal(editedReloaded.body.bio, 'Perfil editado e persistido.');
     console.log('PASS: perfil obrigatório, mínimo de três tags distintas, persistência e bloqueio pelo backend.');
-    // Editar o curso derruba o vínculo anterior, e sem vínculo aprovado a busca
-    // responde 403 desde a validação cadastral obrigatória.
-    const semVinculo = await http.get('/api/v1/rides').set('Authorization', authorization).expect(403);
-    assert.equal(semVinculo.body.code, 'ACADEMIC_VERIFICATION_REQUIRED');
+    const verificationRequired = await http.get('/api/v1/rides').set('Authorization', authorization).expect(403);
+    assert.equal(verificationRequired.body.code, 'ACADEMIC_VERIFICATION_REQUIRED', 'editar curso invalida o vínculo anterior');
     await tx.academicVerification.upsert({
       where: { userId: driverId },
       create: { userId: driverId, reportGuid: randomUUID(), status: 'APPROVED', reviewedAt: new Date() },
@@ -310,13 +308,19 @@ async function verifyHttp(tx, driverId, filters) {
       timezone: 'America/Sao_Paulo', availableSeats: 6, pricePerPersonCents: 0,
       acceptsLuggage: true, allowsMusic: false, acceptsPets: false,
     };
-    await http.post('/api/v1/rides').set('Authorization', passengerAuthorization)
-      .send(newRide).expect(403);
+    // O JWT do aplicativo só concede papéis assinados E presentes no banco:
+    // um token de PASSENGER emitido antes da promoção não herda DRIVER.
+    const staleToken = await http.post('/api/v1/rides')
+      .set('Authorization', passengerAuthorization).send(newRide).expect(403);
+    assert.match(staleToken.body.message, /Perfil sem permissão/);
+    // O refresh emite um token com os papéis atuais, sem relogar o usuário.
     const refreshed = await http.post('/api/v1/auth/refresh')
       .send({ refreshToken: login.body.refreshToken }).expect(200);
     const driverAuthorization = 'Bearer ' + refreshed.body.accessToken;
     const published = await http.post('/api/v1/rides').set('Authorization', driverAuthorization)
       .send(newRide).expect(201);
+    const refreshedProfile = await http.get('/api/v1/users/me').set('Authorization', driverAuthorization).expect(200);
+    assert.ok(refreshedProfile.body.roles.some((entry) => entry.role.name === 'DRIVER'));
     assert.equal(published.body.availableSeats, 6);
     const results = await http.get('/api/v1/rides').set('Authorization', driverAuthorization)
       .query({ date: '29/11/2099', time: '12:00', timezone: 'America/Sao_Paulo', limit: 100 }).expect(200);
@@ -400,6 +404,14 @@ async function run() {
         assert.ok(savedUser.termsAcceptedAt instanceof Date);
         assert.equal(savedUser.termsVersion, TERMS_VERSION);
         assert.equal(savedUser.privacyPolicyVersion, PRIVACY_POLICY_VERSION);
+        // Desde 01/11 a busca só exibe caronas de motoristas academicamente aprovados.
+        // O estado faz parte da fixture, sem relaxar a regra de produção.
+        await tx.academicVerification.create({ data: {
+          userId: driver.id,
+          reportGuid: randomUUID(),
+          status: 'APPROVED',
+          reviewedAt: new Date(),
+        } });
 
         const vehicle = await tx.vehicle.create({
           data: {
@@ -411,14 +423,6 @@ async function run() {
             year: 2026,
             passengerCapacity: 3,
           },
-        });
-        // Desde a validação cadastral obrigatória a busca só mostra carona de
-        // motorista com vínculo aprovado. Sem esta linha o cenário inteiro
-        // devolve lista vazia e as asserções abaixo quebram.
-        await tx.academicVerification.upsert({
-          where: { userId: driver.id },
-          create: { userId: driver.id, reportGuid: randomUUID(), status: 'APPROVED' },
-          update: { status: 'APPROVED' },
         });
         const origin = await tx.location.create({ data: { name: 'Águas teste ' + suffix } });
         const destination = await tx.location.create({ data: { name: 'Campus teste ' + suffix } });

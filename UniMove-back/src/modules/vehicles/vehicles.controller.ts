@@ -57,12 +57,14 @@ export class VehiclesController {
     const document = await this.licenses.image(file);
     const plate = dto.plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const existing = await this.prisma.vehicle.findUnique({ where: { plate } });
-    if (existing && (existing.active || existing.ownerId !== user.id)) throw new ConflictException('Placa já cadastrada.');
+    if (existing && (existing.active || existing.ownerId !== user.id))
+      throw new ConflictException('Placa já cadastrada.');
     return this.prisma
       .$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
         const current = await tx.vehicle.findUnique({ where: { plate } });
-        if (current && (current.active || current.ownerId !== user.id)) throw new ConflictException('Placa já cadastrada.');
+        if (current && (current.active || current.ownerId !== user.id))
+          throw new ConflictException('Placa já cadastrada.');
         if (document) {
           await tx.driverLicense.upsert({
             where: { userId: user.id },
@@ -78,7 +80,10 @@ export class VehiclesController {
           throw new BadRequestException('A foto da CNH é obrigatória.');
         }
         const vehicle = current
-          ? await tx.vehicle.update({ where: { id: current.id }, data: { ...dto, plate, active: true } })
+          ? await tx.vehicle.update({
+              where: { id: current.id },
+              data: { ...dto, plate, active: true },
+            })
           : await tx.vehicle.create({ data: { ...dto, plate, ownerId: user.id } });
         const role = await tx.role.upsert({
           where: { name: RoleName.DRIVER },
@@ -126,7 +131,9 @@ export class VehiclesController {
     return this.prisma
       .$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
-        const vehicle = await tx.vehicle.findFirst({ where: { id, ownerId: user.id, active: true } });
+        const vehicle = await tx.vehicle.findFirst({
+          where: { id, ownerId: user.id, active: true },
+        });
         if (!vehicle) throw new NotFoundException('Veículo não encontrado.');
         if (document) {
           await tx.driverLicense.upsert({

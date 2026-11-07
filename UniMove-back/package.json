@@ -22,6 +22,9 @@
     "test:integration": "npm run build && node test/ride-queries.integration.cjs",
     "test:booking": "npm run build && node test/ride-booking.integration.cjs",
     "test:search-regression": "npm run build && node test/ride-search-regression.integration.cjs",
+    "test:admin-integration": "npm run build && node test/admin.integration.cjs",
+    "test:security-integration": "npm run build && node test/auth-attempt-limiter.integration.cjs && node test/admin-deletion-security.integration.cjs",
+    "admin:enroll": "tsx src/modules/admin/admin-enrollment.cli.ts",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -95,7 +98,8 @@
     "typescript-eslint": "latest"
   },
   "overrides": {
-    "multer": "2.5.0"
+    "multer": "2.5.0",
+    "picomatch@>=4.0.0 <4.0.4": "^4.0.4"
   },
   "jest": {
     "moduleFileExtensions": [

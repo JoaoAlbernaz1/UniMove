@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
-import { AdminController, HistoryController, IncidentsController } from './operations.controller';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { HistoryController, IncidentsController } from './operations.controller';
 @Module({
-  imports: [NotificationsModule],
-  controllers: [IncidentsController, HistoryController, AdminController],
+  controllers: [IncidentsController, HistoryController],
 })
 export class OperationsModule {}

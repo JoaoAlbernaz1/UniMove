@@ -22,7 +22,9 @@ export class RequestLoggingInterceptor implements NestInterceptor {
         JSON.stringify({
           requestId,
           method: req.method,
-          path: req.originalUrl,
+          path: req.originalUrl.startsWith('/api/v1/admin')
+            ? req.originalUrl.split('?')[0]
+            : req.originalUrl,
           status: res.statusCode,
           durationMs: Date.now() - started,
           userId: req.user?.id,

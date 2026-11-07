@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -12,14 +14,16 @@ import {
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsIn, IsOptional, IsString, Max, Min } from 'class-validator';
-import { randomBytes, createCipheriv, createDecipheriv, createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import * as argon2 from 'argon2';
 import QRCode from 'qrcode';
 import { generateSecret, generateURI, verify } from 'otplib';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
+import { AllowIncompleteProfile } from '../../common/decorators/profile.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { ProfileVisibility } from '../../generated/prisma/enums';
+import { ProfileVisibility, RoleName } from '../../generated/prisma/enums';
+import { decryptTwoFactorSecret, encryptTwoFactorSecret } from '../auth/two-factor-crypto';
 
 class NotificationPreferencesDto {
   @IsOptional() @Transform(({ value }) => value) @IsBoolean() enabled?: boolean;
@@ -62,32 +66,7 @@ class EnableTwoFactorDto {
 
 class DisableTwoFactorDto {
   @IsString() password!: string;
-}
-
-function encryptionKey() {
-  const seed = process.env.TWO_FACTOR_ENCRYPTION_KEY
-    || process.env.AUTH_REFRESH_SECRET
-    || 'unimove-development-two-factor-key';
-  return createHash('sha256').update(seed).digest();
-}
-
-function encryptSecret(secret: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
-}
-
-function decryptSecret(value: string) {
-  const [ivValue, tagValue, encryptedValue] = value.split('.');
-  if (!ivValue || !tagValue || !encryptedValue) throw new BadRequestException('Segredo 2FA inválido.');
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivValue, 'base64url'));
-  decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedValue, 'base64url')),
-    decipher.final(),
-  ]).toString('utf8');
+  @IsOptional() @IsString() code?: string;
 }
 
 @ApiBearerAuth()
@@ -144,7 +123,9 @@ export class SettingsController {
       select: {
         blockedId: true,
         createdAt: true,
-        blocked: { select: { id: true, fullName: true, profilePhoto: { select: { updatedAt: true } } } },
+        blocked: {
+          select: { id: true, fullName: true, profilePhoto: { select: { updatedAt: true } } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -152,7 +133,8 @@ export class SettingsController {
 
   @Post('blocked-users/:blockedId')
   async blockUser(@CurrentUser() user: AuthUser, @Param('blockedId') blockedId: string) {
-    if (blockedId === user.id) throw new BadRequestException('Você não pode bloquear sua própria conta.');
+    if (blockedId === user.id)
+      throw new BadRequestException('Você não pode bloquear sua própria conta.');
     await this.prisma.user.findUniqueOrThrow({ where: { id: blockedId }, select: { id: true } });
     await this.prisma.userBlock.upsert({
       where: { blockerId_blockedId: { blockerId: user.id, blockedId } },
@@ -216,7 +198,10 @@ export class SettingsController {
   }
 
   @Delete('security-sessions/:sessionId')
-  async revokeSecuritySession(@CurrentUser() user: AuthUser, @Param('sessionId') sessionId: string) {
+  async revokeSecuritySession(
+    @CurrentUser() user: AuthUser,
+    @Param('sessionId') sessionId: string,
+  ) {
     await this.prisma.refreshSession.updateMany({
       where: { id: sessionId, userId: user.id },
       data: { revokedAt: new Date() },
@@ -224,20 +209,32 @@ export class SettingsController {
     return { revoked: true };
   }
 
+  // Segurança da conta não depende de perfil acadêmico: admin não precisa completá-lo.
+  @AllowIncompleteProfile()
   @Get('two-factor')
   async twoFactorStatus(@CurrentUser() user: AuthUser) {
     const auth = await this.prisma.twoFactorAuth.findUnique({ where: { userId: user.id } });
     return { enabled: auth?.enabled ?? false };
   }
 
+  @AllowIncompleteProfile()
   @Post('two-factor/setup')
   async setupTwoFactor(@CurrentUser() user: AuthUser) {
+    await this.assertStudentTwoFactor(user.id);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       select: { institutionalEmail: true },
     });
+    // Reconfigurar exige desativar antes, com senha: um token de acesso roubado
+    // não pode trocar o segundo fator da conta.
+    const current = await this.prisma.twoFactorAuth.findUnique({
+      where: { userId: user.id },
+      select: { enabled: true },
+    });
+    if (current?.enabled)
+      throw new ConflictException('A verificação em duas etapas já está ativa nesta conta.');
     const secret = generateSecret();
-    const encrypted = encryptSecret(secret);
+    const encrypted = encryptTwoFactorSecret(secret);
     await this.prisma.twoFactorAuth.upsert({
       where: { userId: user.id },
       create: { userId: user.id, secret: encrypted, enabled: false },
@@ -251,11 +248,15 @@ export class SettingsController {
     };
   }
 
+  @AllowIncompleteProfile()
   @Post('two-factor/enable')
   async enableTwoFactor(@CurrentUser() user: AuthUser, @Body() dto: EnableTwoFactorDto) {
+    await this.assertStudentTwoFactor(user.id);
     const auth = await this.prisma.twoFactorAuth.findUnique({ where: { userId: user.id } });
     if (!auth) throw new BadRequestException('Configure o segundo fator antes de ativá-lo.');
-    if (!(await verify({ token: dto.code, secret: decryptSecret(auth.secret) })).valid)
+    if (
+      !(await verify({ token: dto.code, secret: decryptTwoFactorSecret(auth.secret).secret })).valid
+    )
       throw new UnauthorizedException('Código de autenticação inválido.');
     await this.prisma.twoFactorAuth.update({
       where: { userId: user.id },
@@ -264,8 +265,10 @@ export class SettingsController {
     return { enabled: true };
   }
 
+  @AllowIncompleteProfile()
   @Post('two-factor/disable')
   async disableTwoFactor(@CurrentUser() user: AuthUser, @Body() dto: DisableTwoFactorDto) {
+    await this.assertStudentTwoFactor(user.id);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       select: { passwordHash: true },
@@ -279,10 +282,29 @@ export class SettingsController {
     return { enabled: false };
   }
 
+  private async assertStudentTwoFactor(userId: string) {
+    const account = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { roles: { select: { role: { select: { name: true } } } } },
+    });
+    if (account.roles.some((item) => item.role.name === RoleName.ADMIN))
+      throw new ForbiddenException({
+        code: 'ADMIN_ENROLLMENT_REQUIRED',
+        message:
+          'O segundo fator administrativo precisa ser gerenciado por um operador autorizado.',
+      });
+  }
+
   @Post('data-export')
   async requestDataExport(@CurrentUser() user: AuthUser) {
     const request = await this.prisma.dataExportRequest.create({
-      data: { id: randomUUID(), userId: user.id, status: 'READY', format: 'JSON', completedAt: new Date() },
+      data: {
+        id: randomUUID(),
+        userId: user.id,
+        status: 'READY',
+        format: 'JSON',
+        completedAt: new Date(),
+      },
     });
     return request;
   }
@@ -298,15 +320,31 @@ export class SettingsController {
       user: await tx.user.findUnique({
         where: { id: user.id },
         select: {
-          id: true, fullName: true, institutionalEmail: true, cpf: true, course: true,
-          semester: true, bio: true, tags: true, createdAt: true, updatedAt: true,
+          id: true,
+          fullName: true,
+          institutionalEmail: true,
+          cpf: true,
+          course: true,
+          semester: true,
+          bio: true,
+          tags: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
-      notificationPreferences: await tx.notificationPreference.findUnique({ where: { userId: user.id } }),
+      notificationPreferences: await tx.notificationPreference.findUnique({
+        where: { userId: user.id },
+      }),
       privacyPreferences: await tx.privacyPreference.findUnique({ where: { userId: user.id } }),
-      notifications: await tx.notification.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } }),
+      notifications: await tx.notification.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+      }),
       sentMessages: await tx.chatMessage.findMany({ where: { senderId: user.id } }),
-      blockedUsers: await tx.userBlock.findMany({ where: { blockerId: user.id }, select: { blockedId: true, createdAt: true } }),
+      blockedUsers: await tx.userBlock.findMany({
+        where: { blockerId: user.id },
+        select: { blockedId: true, createdAt: true },
+      }),
     }));
     return data;
   }

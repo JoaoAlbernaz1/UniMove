@@ -3,14 +3,20 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import type { Express } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { configureProxyTrust } from './config/proxy-trust';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: true });
   const config = app.get(ConfigService);
+  const server = app.getHttpAdapter().getInstance() as Express;
+  configureProxyTrust(server, config.get<0 | 1>('app.trustProxyHops') ?? 0);
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({ origin: config.get<string[]>('app.corsOrigins'), credentials: true });
   app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/ready'] });
   app.useGlobalPipes(

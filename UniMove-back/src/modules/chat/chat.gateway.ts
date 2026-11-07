@@ -20,6 +20,7 @@ type AccessPayload = {
   sub: string;
   type: 'access';
   exp: number;
+  scope?: 'admin';
 };
 type ChatMessage = Prisma.ChatMessageGetPayload<{
   include: { sender: { select: { id: true; fullName: true } } };
@@ -147,6 +148,7 @@ export class ChatGateway implements OnGatewayInit<Namespace> {
       });
       if (
         payload.type !== 'access' ||
+        payload.scope === 'admin' ||
         typeof payload.sub !== 'string' ||
         !Number.isInteger(payload.exp)
       ) {

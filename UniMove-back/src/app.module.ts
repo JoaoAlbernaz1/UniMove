@@ -8,6 +8,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { ProfileCompleteGuard } from './common/guards/profile-complete.guard';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { PrismaModule } from './database/prisma.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { HealthModule } from './modules/health/health.module';
@@ -40,6 +41,7 @@ import { VehiclesModule } from './modules/vehicles/vehicles.module';
     RatingsModule,
     NotificationsModule,
     OperationsModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
