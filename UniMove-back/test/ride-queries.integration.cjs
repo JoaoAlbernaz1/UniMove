@@ -35,9 +35,10 @@ function randomCpf() {
   return digits;
 }
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
+// Mesma sessão da aplicação, inclusive o fuso em UTC: um cliente montado à
+// parte grava o instante deslocado quando o servidor de banco está em outro
+// fuso, e o teste deixaria de medir o que roda em produção.
+const prisma = new PrismaService();
 const rollback = new Error('ROLLBACK_TEST_DATA');
 
 async function verifyAchievements(http, tx, subjectId, authorization, otherDriverId, otherVehicleId, originId, destinationId) {
@@ -117,6 +118,10 @@ async function verifyHttp(tx, driverId, filters) {
     role: tx.role,
     userRole: tx.userRole,
     ride: tx.ride,
+    // A busca passou a olhar a solicitação pendente de quem pesquisa. Sem este
+    // modelo no dublê, `prisma.rideRequest` fica indefinido e GET /rides
+    // responde 500 — era a falha que aparecia só no CI.
+    rideRequest: tx.rideRequest,
     rating: tx.rating,
     routeTemplate: tx.routeTemplate,
     location: tx.location,
@@ -132,7 +137,13 @@ async function verifyHttp(tx, driverId, filters) {
     .overrideProvider(PrismaService)
     .useValue(connection)
     .compile();
-  const app = module.createNestApplication({ logger: false });
+  // Silencioso por padrão. Com INTEGRATION_LOG=1 o filtro de exceções passa a
+  // imprimir o que está por trás de um 5xx, que é justamente o que falta quando
+  // a suíte quebra no runner. O filtro publica apenas requestId, método, rota,
+  // status e o nome do erro — nenhum dado de pessoa.
+  const app = module.createNestApplication({
+    logger: process.env.INTEGRATION_LOG === '1' ? ['error', 'warn'] : false,
+  });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
@@ -175,6 +186,15 @@ async function verifyHttp(tx, driverId, filters) {
     assert.equal(editedReloaded.body.semester, 4);
     assert.equal(editedReloaded.body.bio, 'Perfil editado e persistido.');
     console.log('PASS: perfil obrigatório, mínimo de três tags distintas, persistência e bloqueio pelo backend.');
+    // Editar o curso derruba o vínculo anterior, e sem vínculo aprovado a busca
+    // responde 403 desde a validação cadastral obrigatória.
+    const semVinculo = await http.get('/api/v1/rides').set('Authorization', authorization).expect(403);
+    assert.equal(semVinculo.body.code, 'ACADEMIC_VERIFICATION_REQUIRED');
+    await tx.academicVerification.upsert({
+      where: { userId: driverId },
+      create: { userId: driverId, reportGuid: randomUUID(), status: 'APPROVED', reviewedAt: new Date() },
+      update: { status: 'APPROVED', reviewedAt: new Date() },
+    });
     const page = await http
       .get('/api/v1/rides')
       .set('Authorization', authorization)
@@ -391,6 +411,14 @@ async function run() {
             year: 2026,
             passengerCapacity: 3,
           },
+        });
+        // Desde a validação cadastral obrigatória a busca só mostra carona de
+        // motorista com vínculo aprovado. Sem esta linha o cenário inteiro
+        // devolve lista vazia e as asserções abaixo quebram.
+        await tx.academicVerification.upsert({
+          where: { userId: driver.id },
+          create: { userId: driver.id, reportGuid: randomUUID(), status: 'APPROVED' },
+          update: { status: 'APPROVED' },
         });
         const origin = await tx.location.create({ data: { name: 'Águas teste ' + suffix } });
         const destination = await tx.location.create({ data: { name: 'Campus teste ' + suffix } });
