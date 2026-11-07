@@ -205,7 +205,10 @@ export class AdminSecurityService {
     await this.reauth.assertReauthenticated(actor.id, dto);
     const account = await this.prisma.user.findUniqueOrThrow({
       where: { id: actor.id },
-      select: { institutionalEmail: true, twoFactor: { select: { enabled: true, updatedAt: true } } },
+      select: {
+        institutionalEmail: true,
+        twoFactor: { select: { enabled: true, updatedAt: true } },
+      },
     });
     if (account.twoFactor?.enabled !== true)
       throw new ConflictException({
