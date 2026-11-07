@@ -150,7 +150,7 @@ ALTER TABLE "admin_invites" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "admin_password_resets" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "admin_mfa_recoveries" ENABLE ROW LEVEL SECURITY;
 
-DO $
+DO $rls$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
     REVOKE ALL PRIVILEGES ON TABLE
@@ -163,7 +163,7 @@ BEGIN
       FROM "authenticated";
   END IF;
 END
-$;
+$rls$;
 
 -- ---------------------------------------------------------------------------
 -- Continuidade: quem já é administrador hoje recebe todas as permissões, para
