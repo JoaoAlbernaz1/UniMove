@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import type { PrismaService } from '../../database/prisma.service';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { RoleName, SessionScope, UserStatus } from '../../generated/prisma/enums';
 import { AuthAttemptLimiter } from '../auth/auth-attempt-limiter';
 import { encryptTwoFactorSecret } from '../auth/two-factor-crypto';
 import { AdminAuthService } from './admin-auth.service';
@@ -132,6 +132,7 @@ describe('AdminAuthService refresh respects stored session expiry', () => {
     tokenHash: string;
     expiresAt: Date;
     revokedAt: null;
+    scope: SessionScope;
   };
 
   beforeEach(async () => {
@@ -153,6 +154,7 @@ describe('AdminAuthService refresh respects stored session expiry', () => {
       tokenHash: await argon2.hash(rawToken),
       expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null,
+      scope: SessionScope.ADMIN,
     };
     refreshSession.findUnique.mockImplementation(() => Promise.resolve(session));
     refreshSession.updateMany.mockResolvedValue({ count: 1 });
@@ -176,6 +178,13 @@ describe('AdminAuthService refresh respects stored session expiry', () => {
       expect(refreshSession.create).not.toHaveBeenCalled();
     },
   );
+
+  it('recusa refresh de sessão legada APP mesmo com JWT e senha corretos', async () => {
+    session.scope = SessionScope.APP;
+    await expect(service.refresh(rawToken)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(refreshSession.create).not.toHaveBeenCalled();
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
 
   it('preserves rotation when both JWT and stored session are still valid', async () => {
     await expect(service.refresh(rawToken)).resolves.toMatchObject({

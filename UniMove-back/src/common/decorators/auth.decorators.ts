@@ -12,6 +12,8 @@ export interface AuthUser {
   roles: RoleName[];
   /** Login concluído com segundo fator, e o segundo fator continua ativo. */
   mfa?: boolean;
+  /** Identificador da sessão do painel. Ausente em token do aplicativo. */
+  sid?: string;
 }
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): AuthUser =>
