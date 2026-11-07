@@ -9,7 +9,7 @@ import type { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
 import type { PrismaService } from '../../database/prisma.service';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { RoleName, SessionScope, UserStatus } from '../../generated/prisma/enums';
 import { IS_PUBLIC_KEY } from '../decorators/auth.decorators';
 import { ADMIN_APP_ALLOWED, ADMIN_SESSION_ALLOWED } from '../decorators/admin.decorators';
 import { adminCookieNames } from '../security/admin-session';
@@ -216,6 +216,15 @@ describe('JwtAuthGuard', () => {
       sid: 'sid',
     });
     await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          refreshSessions: expect.objectContaining({
+            where: expect.objectContaining({ scope: SessionScope.ADMIN }),
+          }),
+        }),
+      }),
+    );
     verifyAsync.mockResolvedValue({ sub: 'user-id', type: 'access', mfa: true, scope: 'admin' });
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
   });
