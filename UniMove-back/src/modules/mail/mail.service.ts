@@ -51,6 +51,9 @@ export class MailService {
         host: this.config.getOrThrow<string>('mail.smtp.host'),
         port: this.config.get<number>('mail.smtp.port') ?? 587,
         secure: this.config.get<boolean>('mail.smtp.secure') === true,
+        // Em portas STARTTLS (ex.: 2587 no Render Free), impedir downgrade
+        // silencioso para transporte sem criptografia de links com token.
+        requireTLS: this.config.get<boolean>('mail.smtp.secure') !== true,
         auth: {
           user: this.config.getOrThrow<string>('mail.smtp.user'),
           pass: this.config.getOrThrow<string>('mail.smtp.pass'),
