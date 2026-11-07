@@ -180,6 +180,9 @@ export class AdminAuthService {
     if (
       !session ||
       session.userId !== payload.sub ||
+      // Antes da migração, sessões do painel também ficam com scope APP.
+      // Exigir ADMIN impede que a sessão legada renove acesso após a migração.
+      session.scope !== SessionScope.ADMIN ||
       session.expiresAt <= new Date() ||
       !(await argon2.verify(session.tokenHash, rawToken!))
     )
