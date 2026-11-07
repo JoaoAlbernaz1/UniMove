@@ -70,6 +70,9 @@ describe('MailService', () => {
     values['mail.smtp.pass'] = smtp.pass;
     values['mail.from'] = 'UniMove <nao-responda@unimove.test>';
     await expect(service.send(message)).resolves.toBe('SENT');
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ host: smtp.host, port: 587, secure: false, requireTLS: true }),
+    );
     expect(sendMail).toHaveBeenCalledWith(
       expect.objectContaining({ to: message.to, subject: message.subject }),
     );
