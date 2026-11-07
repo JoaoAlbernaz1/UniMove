@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { AdminPermission, RoleName, UserStatus } from '../../generated/prisma/enums';
 
 // Valor arbitrário e fixo: serializa as operações que podem reduzir o número de
 // administradores. Sem isso, dois admins suspendendo um ao outro ao mesmo tempo
@@ -54,5 +54,52 @@ export async function assertNotLastAdmin(tx: Prisma.TransactionClient, userId: s
     throw new ConflictException({
       code: 'LAST_ADMIN',
       message: 'Esta é a última conta administrativa válida. Habilite outra antes de continuar.',
+    });
+}
+
+/** Administrador que pode gerenciar acessos hoje. */
+export function validAdminManagerWhere(excludeUserId?: string): Prisma.UserWhereInput {
+  return {
+    ...validAdminWhere(excludeUserId),
+    adminAccess: { is: { permissions: { has: AdminPermission.MANAGE_ADMINS } } },
+  };
+}
+
+/**
+ * Chamar dentro da transação que vai retirar de `userId` o papel ADMIN, o
+ * segundo fator ou a permissão MANAGE_ADMINS. Sem isso, dois gestores podem
+ * remover um ao outro ao mesmo tempo e ninguém mais convida administrador.
+ * Vale junto de assertNotLastAdmin, não em vez dela: perder o último gestor é
+ * um bloqueio diferente de perder o último administrador.
+ */
+export async function assertNotLastAdminManager(tx: Prisma.TransactionClient, userId: string) {
+  await lockAdminInvariant(tx);
+  const access = await tx.adminAccess.findUnique({
+    where: { userId },
+    select: { permissions: true },
+  });
+  if (!access?.permissions.includes(AdminPermission.MANAGE_ADMINS)) return;
+  // Mesmo raciocínio de assertNotLastAdmin: bloquear os candidatos força
+  // conflito se status, papel, MFA ou permissão mudaram desde o snapshot.
+  await tx.$executeRaw`
+    SELECT u.id
+    FROM users AS u
+    JOIN user_roles AS ur ON ur.user_id = u.id
+    JOIN roles AS r ON r.id = ur.role_id
+    JOIN two_factor_auth AS tfa ON tfa.user_id = u.id
+    JOIN admin_access AS aa ON aa.user_id = u.id
+    WHERE u.id <> ${userId}::uuid
+      AND u.status = ${UserStatus.ACTIVE}::"UserStatus"
+      AND u.deleted_at IS NULL
+      AND r.name = ${RoleName.ADMIN}::"RoleName"
+      AND tfa.enabled = true
+      AND 'MANAGE_ADMINS' = ANY (aa.permissions)
+    ORDER BY u.id
+    FOR SHARE OF u, ur, tfa, aa`;
+  if (!(await tx.user.count({ where: validAdminManagerWhere(userId) })))
+    throw new ConflictException({
+      code: 'LAST_ADMIN_MANAGER',
+      message:
+        'Esta é a última conta autorizada a gerenciar acessos administrativos. Autorize outra antes de continuar.',
     });
 }
