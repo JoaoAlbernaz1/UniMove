@@ -15,6 +15,7 @@ import { AdminOperationsService } from './admin-operations.service';
 import { AdminPermissionsGuard } from './admin-permission.guard';
 import { AdminReauthService } from './admin-reauth.service';
 import { AdminRecoveryService } from './admin-recovery.service';
+import { AdminSecurityService } from './admin-security.service';
 import { AdminSessionsService } from './admin-sessions.service';
 import { AdminUsersService } from './admin-users.service';
 
@@ -38,6 +39,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminPermissionsGuard,
     AdminReauthService,
     AdminRecoveryService,
+    AdminSecurityService,
     AdminSessionsService,
     AdminUsersService,
   ],

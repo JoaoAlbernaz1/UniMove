@@ -23,12 +23,15 @@ import {
   AdminAccountsQueryDto,
   AdminInvitesQueryDto,
   AdminRecoveriesQueryDto,
+  ChangeOwnPasswordDto,
+  ConfirmAuthenticatorDto,
   CreateAdminInviteDto,
   ReauthDto,
   RevokeAdminAccessDto,
   ReviewMfaRecoveryDto,
   UpdateAdminPermissionsDto,
 } from './admin-iam.dto';
+import { AdminSecurityService } from './admin-security.service';
 import { AdminInvitesService } from './admin-invites.service';
 import { AdminPermissionRoute } from './admin-permission.guard';
 import { ADMIN_PERMISSION_CATALOG } from './admin-permissions';
@@ -49,6 +52,7 @@ export class AdminAccountsController {
     private readonly invites: AdminInvitesService,
     private readonly recovery: AdminRecoveryService,
     private readonly sessions: AdminSessionsService,
+    private readonly security: AdminSecurityService,
   ) {}
 
   // ------------------------------------------------- catálogo e sessão própria
@@ -61,6 +65,47 @@ export class AdminAccountsController {
   @Get('permissions')
   permissionCatalog() {
     return { items: ADMIN_PERMISSION_CATALOG };
+  }
+
+  /** Resumo da própria conta: 2FA, senha, sessões e último acesso. */
+  @AdminRoute()
+  @Get('security/overview')
+  securityOverview(@CurrentUser() user: AuthUser) {
+    return this.security.overview(user);
+  }
+
+  /**
+   * Troca de senha de quem está autenticado. A redefinição por e-mail é outra
+   * coisa e fica em /admin/auth/password-reset, para quem perdeu o acesso.
+   */
+  @AdminRoute()
+  @Patch('security/password')
+  changeOwnPassword(@CurrentUser() user: AuthUser, @Body() dto: ChangeOwnPasswordDto) {
+    return this.security.changePassword(user, dto);
+  }
+
+  @AdminRoute()
+  @Post('security/recovery-codes')
+  @HttpCode(HttpStatus.OK)
+  regenerateRecoveryCodes(@CurrentUser() user: AuthUser, @Body() dto: ReauthDto) {
+    return this.security.regenerateRecoveryCodes(user, dto);
+  }
+
+  @AdminRoute()
+  @Post('security/authenticator/start')
+  @HttpCode(HttpStatus.OK)
+  startAuthenticatorReplacement(@CurrentUser() user: AuthUser, @Body() dto: ReauthDto) {
+    return this.security.startAuthenticatorReplacement(user, dto);
+  }
+
+  @AdminRoute()
+  @Post('security/authenticator/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmAuthenticatorReplacement(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ConfirmAuthenticatorDto,
+  ) {
+    return this.security.confirmAuthenticatorReplacement(user, dto);
   }
 
   @AdminRoute()

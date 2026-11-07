@@ -114,3 +114,14 @@ export class ConfirmMfaRecoveryDto extends AdminTokenDto {
 export class AdminAccountsQueryDto extends PaginationDto {
   @IsOptional() @trimmed() @IsString() @MaxLength(100) q?: string;
 }
+
+/** Troca de senha de quem está autenticado. Não é a redefinição por e-mail. */
+export class ChangeOwnPasswordDto {
+  @IsString() @MaxLength(200) currentPassword!: string;
+  @IsString() @StrongPassword() password!: string;
+}
+
+export class ConfirmAuthenticatorDto {
+  @IsString() @MaxLength(4000) setupTicket!: string;
+  @trimmed() @IsString() @Length(6, 6) code!: string;
+}
