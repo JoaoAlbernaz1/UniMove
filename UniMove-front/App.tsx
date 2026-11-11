@@ -31,6 +31,7 @@ import { PersonalInfoScreen } from './src/screens/PersonalInfoScreen';
 import { AdminVerificationScreen } from './src/screens/AdminVerificationScreen';
 import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
 import { PrivacyScreen } from './src/screens/PrivacyScreen';
+import { HelpCenterScreen } from './src/screens/HelpCenterScreen';
 import type { Conversation } from './src/api/messages';
 import { colors } from './src/theme';
 import { AdvertisementBar } from './src/components/AdvertisementBar';
@@ -167,6 +168,7 @@ function SignedInApp() {
     | 'AdminVerification'
     | 'Notifications'
     | 'Privacy'
+    | 'Help'
   >('Home');
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
@@ -285,6 +287,7 @@ function SignedInApp() {
           }
           onNavigateNotifications={() => setLoggedScreen('Notifications')}
           onNavigatePrivacy={() => setLoggedScreen('Privacy')}
+          onNavigateHelp={() => setLoggedScreen('Help')}
         />
       );
     if (loggedScreen === 'Notifications')
@@ -295,6 +298,8 @@ function SignedInApp() {
       );
     if (loggedScreen === 'Privacy')
       return <PrivacyScreen onBack={() => setLoggedScreen('Settings')} />;
+    if (loggedScreen === 'Help')
+      return <HelpCenterScreen onBack={() => setLoggedScreen('Settings')} />;
     if (loggedScreen === 'PersonalInfo')
       return (
         <PersonalInfoScreen

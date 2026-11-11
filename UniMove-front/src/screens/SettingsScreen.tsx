@@ -53,12 +53,14 @@ export function SettingsScreen({
   onNavigateAdminVerification,
   onNavigateNotifications,
   onNavigatePrivacy,
+  onNavigateHelp,
 }: {
   onBack: () => void;
   onNavigatePersonalInfo: () => void;
   onNavigateAdminVerification: () => void;
   onNavigateNotifications: () => void;
   onNavigatePrivacy: () => void;
+  onNavigateHelp: () => void;
 }) {
   const { authApi, signOut } = useAuth();
   const [user, setUser] = useState<Me | null>(null);
@@ -89,13 +91,6 @@ export function SettingsScreen({
     return () => clearTimeout(timer);
   }, [loadUser]);
 
-  function showComingSoon(moduleName: string) {
-    Alert.alert(
-      moduleName,
-      'Este módulo será desenvolvido em uma próxima etapa.',
-    );
-  }
-
   function confirmSignOut() {
     Alert.alert('Sair da conta', 'Deseja realmente encerrar sua sessão?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -121,6 +116,23 @@ export function SettingsScreen({
     .map((part) => part[0])
     .join('')
     .toUpperCase();
+
+  function navigateToSetting(title: string) {
+    switch (title) {
+      case 'Informações Pessoais':
+        onNavigatePersonalInfo();
+        break;
+      case 'Notificações':
+        onNavigateNotifications();
+        break;
+      case 'Privacidade':
+        onNavigatePrivacy();
+        break;
+      case 'Central de Ajuda':
+        onNavigateHelp();
+        break;
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -202,15 +214,7 @@ export function SettingsScreen({
                 return (
                   <Pressable
                     key={item.title}
-                    onPress={() =>
-                      item.title === 'Informações Pessoais'
-                        ? onNavigatePersonalInfo()
-                        : item.title === 'Notificações'
-                          ? onNavigateNotifications()
-                          : item.title === 'Privacidade'
-                            ? onNavigatePrivacy()
-                            : showComingSoon(item.title)
-                    }
+                    onPress={() => navigateToSetting(item.title)}
                     style={({ pressed }) => [
                       styles.menuRow,
                       index < section.items.length - 1 && styles.dividedRow,
