@@ -20,7 +20,8 @@ import { VehicleUploadPipe } from './vehicle-upload.pipe';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PrismaService } from '../../database/prisma.service';
-import { RoleName, RideStatus } from '../../generated/prisma/enums';
+import { NotificationType, RoleName, RideStatus } from '../../generated/prisma/enums';
+import { NotificationService } from '../notifications/notifications.service';
 import { Prisma } from '../../generated/prisma/client';
 import { CreateVehicleDto, UpdateVehicleDto } from './vehicle.dto';
 import { DRIVER_LICENSE_MAX_BYTES, vehicleRegistrationPolicy } from './vehicle-policy';
@@ -35,6 +36,7 @@ export class VehiclesController {
     private readonly prisma: PrismaService,
     private readonly licenses: DriverLicenseService,
     private readonly membership: DriverMembershipService,
+    private readonly notifications?: NotificationService,
   ) {}
   @Get('registration-policy') policy() {
     return vehicleRegistrationPolicy();
@@ -95,6 +97,18 @@ export class VehiclesController {
           update: {},
           create: { userId: user.id, roleId: role.id },
         });
+        await this.notifications?.create(
+          {
+            userId: user.id,
+            type: NotificationType.ACCOUNT_UPDATED,
+            title: 'Carro cadastrado',
+            message: `${vehicle.brand} ${vehicle.model} (${vehicle.plate}) foi vinculado à sua conta. Agora você pode oferecer caronas.`,
+            resourceType: 'VEHICLE',
+            resourceId: vehicle.id,
+            metadata: { kind: 'VEHICLE_REGISTERED' },
+          },
+          tx,
+        );
         return vehicle;
       })
       .catch((error: unknown) => {

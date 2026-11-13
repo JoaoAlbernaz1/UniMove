@@ -55,6 +55,7 @@ enum ReservationStatus {
 
 enum NotificationType {
   RIDE_REQUEST_RECEIVED
+  RIDE_REQUEST_SENT
   RIDE_REQUEST_ACCEPTED
   RIDE_REQUEST_REJECTED
   RIDE_REQUEST_EXPIRED
@@ -64,6 +65,9 @@ enum NotificationType {
   MESSAGE_RECEIVED
   INCIDENT_UPDATED
   SYSTEM
+  RIDE_PUBLISHED
+  ACCOUNT_UPDATED
+  PROMOTION
 }
 
 enum ProfileVisibility {
@@ -448,6 +452,8 @@ model Notification {
   user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, type, resourceId, readAt])
   @@map("notifications")
 }
 

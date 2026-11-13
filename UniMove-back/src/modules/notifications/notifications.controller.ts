@@ -1,12 +1,25 @@
-import { Controller, Get, HttpCode, Param, Patch, Query } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsOptional } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/auth.decorators';
 import type { AuthUser } from '../../common/decorators/auth.decorators';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { NotificationType } from '../../generated/prisma/enums';
-import { NotificationService } from './notifications.service';
+import {
+  notificationCategories,
+  NotificationService,
+  type NotificationCategory,
+} from './notifications.service';
 
 class NotificationQueryDto extends PaginationDto {
   @IsOptional()
@@ -17,6 +30,11 @@ class NotificationQueryDto extends PaginationDto {
   @IsOptional()
   @IsEnum(NotificationType)
   type?: NotificationType;
+
+  /** Aba da central: rides, messages, account ou promotions. */
+  @IsOptional()
+  @IsIn(notificationCategories)
+  category?: NotificationCategory;
 }
 
 @ApiTags('notifications')
@@ -42,7 +60,13 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @HttpCode(204)
-  async markAsRead(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async markAsRead(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     await this.notifications.markAsRead(user.id, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    await this.notifications.remove(user.id, id);
   }
 }

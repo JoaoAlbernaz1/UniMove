@@ -31,6 +31,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "admin:recover-mfa": "tsx src/modules/admin/admin-recovery.cli.ts",
+    "notifications:broadcast": "tsx src/modules/notifications/notifications-broadcast.cli.ts",
     "test:iam-integration": "npm run build && node test/admin-iam.integration.cjs"
   },
   "dependencies": {

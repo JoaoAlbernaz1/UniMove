@@ -12,11 +12,19 @@ describe('Home indicators', () => {
       const prisma = {
         rideRequest: { count: jest.fn().mockResolvedValue(pending) },
         $queryRaw: jest.fn().mockResolvedValue([{ hasUnreadMessages: messages }]),
+        notification: { count: jest.fn().mockResolvedValue(4) },
       };
       const result = await new HomeIndicatorsService(prisma as unknown as PrismaService).get(
         'user-id',
       );
-      expect(result).toEqual({ hasPendingRideRequests: requests, hasUnreadMessages: messages });
+      expect(result).toEqual({
+        hasPendingRideRequests: requests,
+        hasUnreadMessages: messages,
+        unreadNotifications: 4,
+      });
+      expect(prisma.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-id', readAt: null },
+      });
       expect(prisma.rideRequest.count).toHaveBeenCalledWith({
         where: {
           status: 'PENDING',

@@ -1,10 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationType } from '../../generated/prisma/enums';
+import { NotificationService } from '../notifications/notifications.service';
 import { CreateRideDto } from './create-ride.dto';
 
 @Injectable()
 export class OfferRidesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications?: NotificationService,
+  ) {}
 
   async create(driverId: string, dto: CreateRideDto) {
     const departureAt = new Date(dto.departureAt);
@@ -56,7 +61,7 @@ export class OfferRidesService {
           active: false,
         },
       });
-      return tx.ride.create({
+      const ride = await tx.ride.create({
         data: {
           driverId,
           routeTemplateId: route.id,
@@ -74,6 +79,19 @@ export class OfferRidesService {
         },
         include: { originLocation: true, destinationLocation: true, vehicle: true },
       });
+      await this.notifications?.create(
+        {
+          userId: driverId,
+          type: NotificationType.RIDE_PUBLISHED,
+          title: 'Carona publicada',
+          message: `Sua carona já aparece nas buscas com ${dto.availableSeats} ${dto.availableSeats === 1 ? 'vaga' : 'vagas'}. Avisaremos quando alguém pedir uma vaga.`,
+          resourceType: 'RIDE',
+          resourceId: ride.id,
+          metadata: { rideId: ride.id },
+        },
+        tx,
+      );
+      return ride;
     });
   }
 }

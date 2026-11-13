@@ -40,6 +40,11 @@ async function check(tx) {
     .useValue({
       create: (data, client = tx) => client.notification.create({ data }),
       createMany: (data, client = tx) => client.notification.createMany({ data }),
+      markResourceAsRead: (userId, resourceType, resourceId) =>
+        tx.notification.updateMany({
+          where: { userId, resourceType, resourceId, readAt: null },
+          data: { readAt: new Date() },
+        }),
     })
     .compile();
   const app = module.createNestApplication({ logger: false });

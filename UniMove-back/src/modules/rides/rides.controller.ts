@@ -129,15 +129,31 @@ export class RidesController {
         },
       });
 
+      const passenger = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { fullName: true },
+      });
       await this.notifications.create(
         {
           userId: ride.driverId,
           type: NotificationType.RIDE_REQUEST_RECEIVED,
-          title: 'Nova solicitação',
-          message: 'Um passageiro solicitou vaga na sua carona.',
+          title: 'Nova solicitação de carona',
+          message: `${passenger?.fullName ?? 'Um passageiro'} quer uma vaga na sua carona. Responda antes que o pedido expire.`,
           resourceType: 'RIDE_REQUEST',
           resourceId: request.id,
-          metadata: { rideId, passengerId: user.id },
+          metadata: { rideId, passengerId: user.id, passengerName: passenger?.fullName ?? null },
+        },
+        tx,
+      );
+      await this.notifications.create(
+        {
+          userId: user.id,
+          type: NotificationType.RIDE_REQUEST_SENT,
+          title: 'Solicitação enviada',
+          message: 'Seu pedido foi enviado ao motorista. Avisaremos aqui quando ele responder.',
+          resourceType: 'RIDE_REQUEST',
+          resourceId: request.id,
+          metadata: { rideId },
         },
         tx,
       );
@@ -269,7 +285,7 @@ export class RidesController {
             userId: r.passengerId,
             type: NotificationType.RIDE_CANCELLED,
             title: 'Carona cancelada',
-            message: 'O motorista cancelou a carona.',
+            message: 'O motorista cancelou esta carona. Busque outra opção para o seu trajeto.',
             resourceType: 'RIDE',
             resourceId: id,
           })),
@@ -313,8 +329,8 @@ export class RidesController {
             title: status === RideStatus.IN_PROGRESS ? 'Carona iniciada' : 'Carona concluída',
             message:
               status === RideStatus.IN_PROGRESS
-                ? 'O motorista iniciou a carona.'
-                : 'A carona foi concluída.',
+                ? 'O motorista iniciou a carona. Boa viagem!'
+                : 'Você chegou! Avalie o motorista para ajudar a comunidade.',
             resourceType: 'RIDE',
             resourceId: id,
           })),
@@ -327,7 +343,9 @@ export class RidesController {
             userId: driverId,
             type: NotificationType.RIDE_COMPLETED,
             title: 'Carona concluída',
-            message: 'A carona foi concluída.',
+            message: passengers.length
+              ? `Viagem finalizada com ${passengers.length} ${passengers.length === 1 ? 'passageiro' : 'passageiros'}. Obrigado por compartilhar o trajeto!`
+              : 'Viagem finalizada. Obrigado por compartilhar o trajeto!',
             resourceType: 'RIDE',
             resourceId: id,
           },
@@ -372,12 +390,16 @@ export class ReservationsController {
         data: { rideId: reservation.rideId, reservationId: id, cancelledByUserId: user.id, ...dto },
       });
       const ride = await tx.ride.findUniqueOrThrow({ where: { id: reservation.rideId } });
+      const passenger = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { fullName: true },
+      });
       await this.notifications.create(
         {
           userId: ride.driverId,
           type: NotificationType.RIDE_CANCELLED,
           title: 'Reserva cancelada',
-          message: 'Um passageiro cancelou a reserva.',
+          message: `${passenger?.fullName ?? 'Um passageiro'} cancelou a reserva. A vaga voltou a ficar disponível.`,
           resourceType: 'RIDE',
           resourceId: reservation.rideId,
           metadata: { reservationId: id, passengerId: user.id },

@@ -37,6 +37,7 @@ describe('Ride booking', () => {
         aggregate: jest.fn().mockResolvedValue({ _sum: { seatsRequested: 1 } }),
         create: jest.fn().mockResolvedValue({ id: 'request', status: 'PENDING' }),
       },
+      user: { findUnique: jest.fn().mockResolvedValue({ fullName: 'Ana Passageira' }) },
     };
     const prisma = { $transaction: jest.fn((fn: (client: typeof tx) => unknown) => fn(tx)) };
     const notifications = { create: jest.fn() };

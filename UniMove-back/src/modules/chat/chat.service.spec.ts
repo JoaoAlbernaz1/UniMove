@@ -28,7 +28,8 @@ describe('ChatService', () => {
       Promise.resolve(callback(tx)),
     ),
   } as unknown as PrismaService;
-  const notifications = { create: notify } as unknown as NotificationService;
+  const markResourceAsRead = jest.fn();
+  const notifications = { create: notify, markResourceAsRead } as unknown as NotificationService;
   const service = new ChatService(prisma, notifications);
 
   beforeEach(() => jest.clearAllMocks());
@@ -72,6 +73,7 @@ describe('ChatService', () => {
       },
       data: { readAt: expect.any(Date) },
     });
+    expect(markResourceAsRead).toHaveBeenCalledWith(passengerId, 'CONVERSATION', conversationId);
   });
 
   it('does not let an outsider mark a conversation as read', async () => {

@@ -231,6 +231,8 @@ export class ChatService {
       select: { id: true, createdAt: true },
     });
     if (!cursor) throw new NotFoundException('Mensagem não encontrada nesta conversa.');
+    // A conversa aberta deixa de aparecer como novidade na central de notificações.
+    await this.notifications.markResourceAsRead(userId, 'CONVERSATION', conversationId);
     // Only messages delivered up to the displayed cursor are read. New arrivals
     // stay unread, and a sender cannot mark their own message read for the recipient.
     return this.prisma.chatMessage.updateMany({
@@ -275,10 +277,15 @@ export class ChatService {
         {
           userId: recipientId,
           type: NotificationType.MESSAGE_RECEIVED,
-          title: 'Nova mensagem',
-          message: `${message.sender.fullName} enviou uma mensagem.`,
+          title: `Nova mensagem de ${message.sender.fullName}`,
+          message: messagePreview(trimmedContent),
           resourceType: 'CONVERSATION',
           resourceId: conversationId,
+          metadata: {
+            rideId: conversation.rideId,
+            senderId: userId,
+            senderName: message.sender.fullName,
+          },
         },
         tx,
       );
@@ -315,4 +322,10 @@ export class ChatService {
       reservationStatus: reservation.status,
     };
   }
+}
+
+/** Prévia curta exibida na central de notificações e no push. */
+function messagePreview(content: string) {
+  const singleLine = content.replace(/\s+/g, ' ');
+  return singleLine.length > 140 ? `${singleLine.slice(0, 139)}…` : singleLine;
 }

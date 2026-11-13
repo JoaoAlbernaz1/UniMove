@@ -8,7 +8,7 @@ export class HomeIndicatorsService {
 
   async get(userId: string) {
     const now = new Date();
-    const [pendingRequests, unread] = await Promise.all([
+    const [pendingRequests, unread, unreadNotifications] = await Promise.all([
       this.prisma.rideRequest.count({
         where: {
           status: 'PENDING',
@@ -34,10 +34,13 @@ export class HomeIndicatorsService {
                 AND rr.status IN ('CONFIRMED', 'COMPLETED')
             )
         ) AS "hasUnreadMessages"`,
+      // Contador do sino da Home (central de notificações).
+      this.prisma.notification.count({ where: { userId, readAt: null } }),
     ]);
     return {
       hasPendingRideRequests: pendingRequests > 0,
       hasUnreadMessages: unread[0]?.hasUnreadMessages ?? false,
+      unreadNotifications,
     };
   }
 }

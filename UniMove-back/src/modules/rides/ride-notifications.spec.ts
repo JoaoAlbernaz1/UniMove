@@ -42,6 +42,7 @@ describe('Ride event notifications', () => {
         create: jest.fn().mockResolvedValue({ id: 'request-id' }),
         aggregate: jest.fn().mockResolvedValue({ _sum: { seatsRequested: 0 } }),
       },
+      user: { findUnique: jest.fn().mockResolvedValue({ fullName: 'Ana Passageira' }) },
       $queryRaw: jest.fn(),
     } as unknown as PrismaService;
     prisma.$transaction = jest.fn((callback) => callback(prisma)) as never;
@@ -57,6 +58,17 @@ describe('Ride event notifications', () => {
         userId: driver.id,
         type: NotificationType.RIDE_REQUEST_RECEIVED,
         resourceId: 'request-id',
+        message: expect.stringContaining('Ana Passageira'),
+      }),
+      prisma,
+    );
+    // O passageiro também registra o pedido no próprio histórico.
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: passenger.id,
+        type: NotificationType.RIDE_REQUEST_SENT,
+        resourceId: 'request-id',
+        metadata: { rideId: 'ride-id' },
       }),
       prisma,
     );
@@ -200,6 +212,7 @@ describe('Ride event notifications', () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'ride-id', driverId: driver.id }),
       },
       cancellation: { create: jest.fn() },
+      user: { findUnique: jest.fn().mockResolvedValue({ fullName: 'Ana Passageira' }) },
     };
     const prisma = {
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>

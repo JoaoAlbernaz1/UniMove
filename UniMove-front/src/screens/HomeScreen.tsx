@@ -30,6 +30,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Message } from '../components/Message';
 import { Button } from '../components/Button';
 import { NotificationDot } from '../components/NotificationDot';
+import { formatBadgeCount } from '../notifications';
 import {
   getIdentityVerificationStatus,
   type IdentityVerificationStatus,
@@ -95,7 +96,12 @@ export function HomeScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasVehicle, setHasVehicle] = useState<boolean | null>(null);
-  const [indicators, setIndicators] = useState({ hasPendingRideRequests: false, hasUnreadMessages: false });
+  const [indicators, setIndicators] = useState({
+    hasPendingRideRequests: false,
+    hasUnreadMessages: false,
+    unreadNotifications: 0,
+  });
+  const notificationBadge = formatBadgeCount(indicators.unreadNotifications ?? 0);
   const [vehiclesError, setVehiclesError] = useState<string | null>(null);
   const [verificationPromptVisible, setVerificationPromptVisible] = useState(false);
   const [verificationCheckError, setVerificationCheckError] = useState<string | null>(null);
@@ -248,9 +254,18 @@ export function HomeScreen({
                   onPress={() => onNavigateNotifications?.()}
                   style={styles.headerIconButton}
                   accessibilityRole="button"
-                  accessibilityLabel="Notificações"
+                  accessibilityLabel={
+                    notificationBadge
+                      ? `Notificações. ${indicators.unreadNotifications} não lidas.`
+                      : 'Notificações'
+                  }
                 >
                   <Bell size={20} color={colors.white} />
+                  {notificationBadge ? (
+                    <View style={styles.bellBadge} pointerEvents="none">
+                      <Text style={styles.bellBadgeText}>{notificationBadge}</Text>
+                    </View>
+                  ) : null}
                 </Pressable>
                 <Pressable
                   onPress={() => onNavigateProfile?.(me?.id ?? '')}
@@ -668,6 +683,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  bellBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: colors.destructive,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: { fontFamily: fonts.bold, fontSize: 10, lineHeight: 12, color: colors.white },
   avatar: {
     width: 44,
     height: 44,

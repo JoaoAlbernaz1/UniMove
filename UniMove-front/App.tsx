@@ -30,6 +30,8 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PersonalInfoScreen } from './src/screens/PersonalInfoScreen';
 import { AdminVerificationScreen } from './src/screens/AdminVerificationScreen';
 import { NotificationSettingsScreen } from './src/screens/NotificationSettingsScreen';
+import { NotificationsScreen } from './src/screens/NotificationsScreen';
+import type { NotificationTarget } from './src/notifications';
 import { PrivacyScreen } from './src/screens/PrivacyScreen';
 import { HelpCenterScreen } from './src/screens/HelpCenterScreen';
 import type { Conversation } from './src/api/messages';
@@ -157,6 +159,7 @@ function SignedInApp() {
     | 'Home'
     | 'SearchRide'
     | 'DriverRequests'
+    | 'PassengerRequests'
     | 'OfferRide'
     | 'Messages'
     | 'Chat'
@@ -167,6 +170,7 @@ function SignedInApp() {
     | 'PersonalInfo'
     | 'AdminVerification'
     | 'Notifications'
+    | 'NotificationCenter'
     | 'Privacy'
     | 'Help'
   >('Home');
@@ -180,6 +184,64 @@ function SignedInApp() {
   const [vehicleNeedsVerification, setVehicleNeedsVerification] = useState(false);
   const [openVerificationOnPersonalInfo, setOpenVerificationOnPersonalInfo] =
     useState(false);
+  // Telas abertas pela central de notificações voltam para ela.
+  const [returnToNotifications, setReturnToNotifications] = useState(false);
+  const [notificationSettingsReturn, setNotificationSettingsReturn] = useState<
+    'Settings' | 'NotificationCenter'
+  >('Settings');
+
+  // Chegar à Home por qualquer caminho encerra a navegação iniciada na central.
+  if (loggedScreen === 'Home' && returnToNotifications)
+    setReturnToNotifications(false);
+
+  function back(fallback: typeof loggedScreen) {
+    return () => {
+      if (returnToNotifications) {
+        setReturnToNotifications(false);
+        setLoggedScreen('NotificationCenter');
+      } else setLoggedScreen(fallback);
+    };
+  }
+
+  async function openNotificationTarget(
+    target: Exclude<NotificationTarget, null>,
+  ) {
+    if (target.screen === 'Home') {
+      setReturnToNotifications(false);
+      setLoggedScreen('Home');
+      return;
+    }
+    setReturnToNotifications(true);
+    if (target.screen === 'Chat') {
+      try {
+        const [conversations, currentUser] = await Promise.all([
+          authApi<Conversation[]>('/messages/conversations'),
+          authApi<Me>('/users/me'),
+        ]);
+        const conversation = conversations.find(
+          ({ id }) => id === target.conversationId,
+        );
+        if (conversation) {
+          setActiveConversation(conversation);
+          setUserId(currentUser.id);
+          setLoggedScreen('Chat');
+          return;
+        }
+      } catch {
+        // Sem a conversa, a lista de mensagens continua acessível.
+      }
+      setLoggedScreen('Messages');
+      return;
+    }
+    if (target.screen === 'Profile') {
+      const currentUser = await authApi<Me>('/users/me').catch(() => null);
+      if (currentUser) setProfileUserId(currentUser.id);
+      setLoggedScreen('Profile');
+      return;
+    }
+    if (target.screen === 'PersonalInfo') setOpenVerificationOnPersonalInfo(false);
+    setLoggedScreen(target.screen);
+  }
 
   async function offerRideFromVehicle() {
     if (checkingVehicleOffer) return;
@@ -233,7 +295,7 @@ function SignedInApp() {
     if (loggedScreen === 'Messages') {
       return (
         <MessagesScreen
-          onBack={() => setLoggedScreen('Home')}
+          onBack={back('Home')}
           onOpenConversation={(conversation, currentUserId) => {
             setActiveConversation(conversation);
             setUserId(currentUserId);
@@ -243,18 +305,34 @@ function SignedInApp() {
       );
     }
     if (loggedScreen === 'History')
-      return <HistoryScreen onBack={() => setLoggedScreen('Home')} />;
+      return <HistoryScreen onBack={back('Home')} />;
     if (loggedScreen === 'SearchRide')
-      return <SearchRideScreen onBack={() => setLoggedScreen('Home')} />;
+      return <SearchRideScreen onBack={back('Home')} />;
     if (loggedScreen === 'DriverRequests')
-      return <RideRequestsScreen mode="driver" onBack={() => setLoggedScreen('Home')} />;
+      return <RideRequestsScreen mode="driver" onBack={back('Home')} />;
+    if (loggedScreen === 'PassengerRequests')
+      return <RideRequestsScreen mode="passenger" onBack={back('Home')} />;
+    if (loggedScreen === 'NotificationCenter')
+      return (
+        <NotificationsScreen
+          onBack={() => {
+            setReturnToNotifications(false);
+            setLoggedScreen('Home');
+          }}
+          onOpenSettings={() => {
+            setNotificationSettingsReturn('NotificationCenter');
+            setLoggedScreen('Notifications');
+          }}
+          onOpenTarget={(target) => void openNotificationTarget(target)}
+        />
+      );
     if (loggedScreen === 'OfferRide')
       return <OfferRideScreen onBack={() => setLoggedScreen('Home')} />;
     if (loggedScreen === 'Profile')
       return (
         <ProfileScreen
           userId={profileUserId}
-          onBack={() => setLoggedScreen('Home')}
+          onBack={back('Home')}
           onRegisterVehicle={() => {
             setVehicleOfferError(null);
             setVehicleNeedsVerification(false);
@@ -285,7 +363,10 @@ function SignedInApp() {
           onNavigateAdminVerification={() =>
             setLoggedScreen('AdminVerification')
           }
-          onNavigateNotifications={() => setLoggedScreen('Notifications')}
+          onNavigateNotifications={() => {
+            setNotificationSettingsReturn('Settings');
+            setLoggedScreen('Notifications');
+          }}
           onNavigatePrivacy={() => setLoggedScreen('Privacy')}
           onNavigateHelp={() => setLoggedScreen('Help')}
         />
@@ -293,7 +374,7 @@ function SignedInApp() {
     if (loggedScreen === 'Notifications')
       return (
         <NotificationSettingsScreen
-          onBack={() => setLoggedScreen('Settings')}
+          onBack={() => setLoggedScreen(notificationSettingsReturn)}
         />
       );
     if (loggedScreen === 'Privacy')
@@ -309,7 +390,7 @@ function SignedInApp() {
           }
           onBack={() => {
             setOpenVerificationOnPersonalInfo(false);
-            setLoggedScreen('Settings');
+            back('Settings')();
           }}
         />
       );
@@ -339,7 +420,10 @@ function SignedInApp() {
           setOpenVerificationOnPersonalInfo(openVerification);
           setLoggedScreen('PersonalInfo');
         }}
-        onNavigateNotifications={() => setLoggedScreen('Notifications')}
+        onNavigateNotifications={() => {
+          setReturnToNotifications(false);
+          setLoggedScreen('NotificationCenter');
+        }}
       />
     );
   }

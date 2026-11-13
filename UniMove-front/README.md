@@ -123,6 +123,19 @@ carregar o histórico e recuperar mensagens após uma desconexão.
 Consulte [a documentação detalhada do módulo](../docs/chat-conversas-tempo-real.md) para
 entender o fluxo completo e os eventos usados.
 
+### Notificações
+
+O sino da Home mostra quantas notificações não lidas existem (até "9+") e abre a
+central de notificações. Ela lista as atividades da conta agrupadas em Hoje,
+Ontem, Esta semana e Anteriores, com abas Todas, Caronas, Mensagens, Conta e
+Novidades, tempo relativo, trajeto/horário da carona e destaque das não lidas.
+Tocar em um item marca como lido e abre a tela relacionada (chat, pedidos de
+carona, minhas solicitações, histórico, buscar carona, informações pessoais ou
+perfil); promoções expandem o texto. Ao voltar, o app retorna à central. O menu
+de cada item permite marcar como lida ou remover, e a engrenagem abre as
+preferências. A lógica de apresentação está em `src/notifications.ts` e é coberta
+por `npm test`.
+
 ### Celular sem acesso à máquina (EAS Update)
 
 Quando o celular não alcança o computador (rede corporativa, sem túnel), publique o

@@ -11,7 +11,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { verify } from 'otplib';
 import { PrismaService } from '../../database/prisma.service';
 import { isValidCpf } from '../../common/validators/cpf';
-import { RoleName, UserStatus } from '../../generated/prisma/enums';
+import { NotificationType, RoleName, UserStatus } from '../../generated/prisma/enums';
+import { NotificationService } from '../notifications/notifications.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import {
   PASSWORD_REQUIREMENTS,
@@ -41,6 +42,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly limiter: AuthAttemptLimiter,
+    private readonly notifications?: NotificationService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -84,6 +86,18 @@ export class AuthService {
           entityId: user.id,
         },
       });
+      await this.notifications?.create(
+        {
+          userId: user.id,
+          type: NotificationType.SYSTEM,
+          title: 'Boas-vindas ao UniMove!',
+          message:
+            'Complete seu perfil e envie o comprovante de matrícula para começar a pegar e oferecer caronas.',
+          resourceType: 'ACCOUNT',
+          metadata: { kind: 'WELCOME' },
+        },
+        tx,
+      );
       return user;
     });
   }

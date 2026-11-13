@@ -6,7 +6,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { AcademicVerificationStatus, RoleName } from '../../generated/prisma/enums';
+import {
+  AcademicVerificationStatus,
+  NotificationType,
+  RoleName,
+} from '../../generated/prisma/enums';
+import { NotificationService } from '../notifications/notifications.service';
 import { PrismaService } from '../../database/prisma.service';
 import { PDFParse } from 'pdf-parse';
 
@@ -25,7 +30,10 @@ const verificationSelect = {
 
 @Injectable()
 export class VerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications?: NotificationService,
+  ) {}
 
   async status(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
@@ -111,6 +119,27 @@ export class VerificationService {
           entityId: userId,
         },
       });
+      // O comprovante já foi salvo: falhar ao registrar o aviso não deve gerar erro.
+      await this.notifications
+        ?.create({
+          userId,
+          type: NotificationType.ACCOUNT_UPDATED,
+          title: 'Comprovante em análise',
+          message:
+            'Recebemos seu comprovante de matrícula. Avisaremos aqui assim que a equipe UniMove concluir a revisão.',
+          resourceType: 'ACADEMIC_VERIFICATION',
+          resourceId: userId,
+          metadata: { kind: 'VERIFICATION_SUBMITTED' },
+        })
+        .catch((error: unknown) =>
+          verificationLogger.warn(
+            JSON.stringify({
+              requestId,
+              stage: 'persist-notification',
+              ...safeErrorDetails(error),
+            }),
+          ),
+        );
       return {
         status: verification.status,
         submittedAt: verification.submittedAt,
@@ -208,6 +237,21 @@ export class VerificationService {
           metadata: { reviewNote: reviewNote?.trim() || null },
         },
       });
+      const approved = status === AcademicVerificationStatus.APPROVED;
+      await this.notifications?.create(
+        {
+          userId,
+          type: NotificationType.ACCOUNT_UPDATED,
+          title: approved ? 'Validação aprovada' : 'Validação recusada',
+          message: approved
+            ? 'Sua matrícula foi confirmada. Você já pode buscar e oferecer caronas!'
+            : `Seu comprovante não foi aprovado: ${reviewNote?.trim()}. Envie um novo documento em Informações pessoais.`,
+          resourceType: 'ACADEMIC_VERIFICATION',
+          resourceId: userId,
+          metadata: { kind: approved ? 'VERIFICATION_APPROVED' : 'VERIFICATION_REJECTED' },
+        },
+        tx,
+      );
       return verification;
     });
     return result;

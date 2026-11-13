@@ -211,8 +211,39 @@ fluxo completo, eventos, autorização, reconexão e limitações.
 
 O backend usa UTC e as rotas recorrentes registram seu timezone. `.env` nunca deve ser versionado.
 
-## Notificações da V1
+## Central de notificações
 
-As notificações são persistidas exclusivamente no PostgreSQL e consultadas pelo app através da API REST. O WebSocket é reservado à entrega das mensagens de conversa; notificações gerais não usam push ou WebSocket. E-mail e push estão planejados para a V2.
+Cada atividade relevante da conta fica registrada em `notifications` e aparece no
+sino da Home, como nos apps de mobilidade e vídeo: pedido enviado/recebido,
+aceite, recusa, expiração, carona publicada, iniciada, concluída ou cancelada,
+mensagens recebidas, boas-vindas, validação acadêmica, carro cadastrado,
+promoções e avisos do UniMove.
+
+- `GET /api/v1/notifications?page&limit&category` lista as mais recentes primeiro.
+  `category` filtra as abas do app: `rides`, `messages`, `account` ou `promotions`.
+  Notificações de carona trazem em `metadata.ride` origem, destino, saída e motorista.
+- `GET /api/v1/notifications/unread-count`, `PATCH /notifications/:id/read`,
+  `PATCH /notifications/read-all` e `DELETE /notifications/:id` (somente as próprias).
+- `GET /api/v1/users/me/indicators` inclui `unreadNotifications` para o contador do sino.
+- Mensagens não lidas da mesma conversa são agrupadas em uma notificação
+  (`metadata.count`), e abrir a conversa marca essa notificação como lida.
+
+O histórico do app é sempre gravado. As preferências de **Configurações >
+Notificações** (categorias, "Não perturbe" no horário de Brasília e canais) valem
+para push, e-mail e SMS, que são enviados depois da confirmação da transação e
+nunca bloqueiam a operação de origem. Contas sem preferências salvas recebem
+apenas o histórico no app. Promoções só saem por canais externos com
+"Promoções e novidades" ativado. Em `NODE_ENV=test` nenhum envio externo é feito.
+
+Promoções e avisos são publicados por um operador com acesso ao banco:
+
+```
+npm run notifications:broadcast -- --title "Título" --message "Texto" [--type PROMOTION|SYSTEM] [--to a@ucb.edu.br,b@ucb.edu.br]
+```
+
+Sem `--confirm` o comando só informa quantas contas receberiam; com `--confirm`
+publica no app (sem push/e-mail). A migração `202611130001_notification_inbox`
+acrescenta os novos tipos e índices; aplique com `npm run prisma:deploy` e
+regenere o client com `npm run prisma:generate`.
 
 As mensagens usam Socket.IO para entrega em tempo real; notificações gerais permanecem na API REST.

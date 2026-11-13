@@ -3,7 +3,8 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { PrismaService } from '../../database/prisma.service';
 import { ROLES_KEY } from '../../common/decorators/auth.decorators';
-import { RoleName } from '../../generated/prisma/enums';
+import { NotificationType, RoleName } from '../../generated/prisma/enums';
+import type { NotificationService } from '../notifications/notifications.service';
 import { CreateRideDto } from './create-ride.dto';
 import { OfferRidesController } from './offer-rides.controller';
 import { OfferRidesService } from './offer-rides.service';
@@ -24,7 +25,11 @@ describe('Publicação de carona avulsa', () => {
   const transaction = jest.fn((callback: (client: typeof tx) => unknown) =>
     Promise.resolve(callback(tx)),
   );
-  const service = new OfferRidesService({ $transaction: transaction } as unknown as PrismaService);
+  const notify = jest.fn();
+  const service = new OfferRidesService(
+    { $transaction: transaction } as unknown as PrismaService,
+    { create: notify } as unknown as NotificationService,
+  );
   const input: CreateRideDto = {
     vehicleId: '11111111-1111-4111-8111-111111111111',
     originLocationId: '22222222-2222-4222-8222-222222222222',
@@ -162,5 +167,19 @@ describe('Publicação de carona avulsa', () => {
   ])('valida o contrato antes de acessar o banco: %p', async (change) => {
     const errors = await validate(plainToInstance(CreateRideDto, { ...input, ...change }));
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('registra a publicação no histórico do motorista dentro da transação', async () => {
+    await service.create('driver-id', input);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'driver-id',
+        type: NotificationType.RIDE_PUBLISHED,
+        resourceType: 'RIDE',
+        resourceId: 'ride-id',
+        message: expect.stringContaining('3 vagas'),
+      }),
+      tx,
+    );
   });
 });
