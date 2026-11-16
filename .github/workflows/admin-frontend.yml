@@ -1,0 +1,39 @@
+name: Admin frontend quality
+
+on:
+  pull_request:
+    paths:
+      - 'UniMove-admin/**'
+      - 'UniMove-back/**'
+      - '.github/workflows/admin-frontend.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'UniMove-admin/**'
+      - '.github/workflows/admin-frontend.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: UniMove-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: UniMove-admin/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
