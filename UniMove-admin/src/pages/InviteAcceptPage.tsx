@@ -29,6 +29,7 @@ import type {
 } from "../types/admin-iam"
 
 const STEPS = ["Confirmar convite", "Definir senha", "Ativar 2FA", "Guardar códigos"]
+import { adminPath } from "../hooks/useRoute"
 const FOOTER =
   "O acesso administrativo é concedido somente por convite nominal e exige o segundo fator ativo."
 
@@ -101,7 +102,7 @@ export default function InviteAcceptPage() {
           <h1>Convite indisponível</h1>
           <p>{stage.message}</p>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Ir para o login administrativo
             </Button>
           </div>
@@ -148,7 +149,7 @@ export default function InviteAcceptPage() {
             do aplicativo autenticador.
           </p>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Ir para o login
             </Button>
           </div>

@@ -21,6 +21,7 @@ import { mfaRecoveryApi } from "../services/adminIamApi"
 import { iamErrorMessage } from "../services/adminIamErrors"
 import type { TwoFactorProvisioning } from "../types/admin-iam"
 
+import { adminPath } from "../hooks/useRoute"
 const FOOTER =
   "Nenhum link desativa o segundo fator por si: a recuperação exige senha e aprovação de outro administrador."
 const STEPS = ["Confirmar senha", "Ler o QR", "Guardar códigos"]
@@ -61,7 +62,7 @@ export default function AuthenticatorRecoveryPage() {
             </div>
           </section>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Voltar ao login
             </Button>
           </div>
@@ -108,7 +109,7 @@ export default function AuthenticatorRecoveryPage() {
             acabou de cadastrar. As sessões antigas foram encerradas.
           </p>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Ir para o login
             </Button>
           </div>
@@ -250,7 +251,7 @@ function RequestStage({ onRequested }: { onRequested: (message: string) => void 
           <Button
             type="button"
             variant="secondary"
-            onClick={() => window.location.assign("/")}
+            onClick={() => window.location.assign(adminPath("/"))}
             disabled={busy}
           >
             <ArrowLeft size={15} aria-hidden="true" /> Voltar ao login
@@ -324,7 +325,7 @@ function StartStage({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => window.location.assign("/")}
+            onClick={() => window.location.assign(adminPath("/"))}
             disabled={busy}
           >
             Cancelar

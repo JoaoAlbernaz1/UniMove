@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react"
 import { ArrowLeft, KeyRound, Smartphone } from "lucide-react"
 import { useAuth } from "../auth/AuthContext"
+import { adminPath } from "../hooks/useRoute"
 import {
   AlertBanner,
   AuthShell,
@@ -173,7 +174,7 @@ export default function LoginPage() {
           </button>
         </div>
         <div className="auth-secondary-links">
-          <a className="text-button" href="/recuperar-autenticador">
+          <a className="text-button" href={adminPath("/recuperar-autenticador")}>
             Perdi o acesso ao autenticador
           </a>
         </div>
@@ -211,7 +212,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             name="senha"
           />
-          <a className="forgot-link" href="/redefinir-senha">
+          <a className="forgot-link" href={adminPath("/redefinir-senha")}>
             Esqueci minha senha
           </a>
         </div>

@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react"
 
+// Usa o mesmo roteador no domínio independente (/) e no monorepo (/admin/).
+// O Vite define BASE_URL pelo --base usado na compilação.
+const ADMIN_BASE = import.meta.env.BASE_URL.replace(/\/$/, "")
+export const adminPath = (pathname: string) => `${ADMIN_BASE}${pathname}`
+const withoutAdminBase = (pathname: string) =>
+  ADMIN_BASE && (pathname === ADMIN_BASE || pathname.startsWith(`${ADMIN_BASE}/`))
+    ? pathname.slice(ADMIN_BASE.length) || "/"
+    : pathname
+
 export type Page =
   | "dashboard"
   | "users"
@@ -46,12 +55,13 @@ export const PUBLIC_ROUTES = {
 export type PublicRoute = (typeof PUBLIC_ROUTES)[keyof typeof PUBLIC_ROUTES]
 
 export function readPublicRoute(pathname: string): PublicRoute | undefined {
-  return PUBLIC_ROUTES[pathname as keyof typeof PUBLIC_ROUTES]
+  const relative = withoutAdminBase(pathname)
+  return PUBLIC_ROUTES[relative as keyof typeof PUBLIC_ROUTES]
 }
 
 export const pathOf = (page: Page, search?: Record<string, string>) => {
   const query = new URLSearchParams(search).toString()
-  return `${paths[page]}${query ? `?${query}` : ""}`
+  return `${adminPath(paths[page])}${query ? `?${query}` : ""}`
 }
 
 const pageByPath = new Map(
@@ -76,7 +86,7 @@ export function useRoute() {
     () => new URL(location, window.location.origin),
     [location],
   )
-  const page = pageByPath.get(url.pathname) ?? "dashboard"
+  const page = pageByPath.get(withoutAdminBase(url.pathname)) ?? "dashboard"
 
   const navigate = useCallback((next: Page, search?: Record<string, string>) => {
     window.history.pushState(null, "", pathOf(next, search))
