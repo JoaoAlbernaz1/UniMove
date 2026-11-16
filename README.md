@@ -7,8 +7,8 @@
 ## Sobre o projeto
 
 O UniMove conecta estudantes que oferecem caronas a estudantes que procuram
-transporte até o campus. O projeto é composto por um aplicativo multiplataforma
-e uma API REST com banco de dados PostgreSQL.
+transporte até o campus. O repositório reúne o aplicativo multiplataforma, a API
+REST compartilhada com PostgreSQL e o painel administrativo web.
 
 Entre os recursos implementados estão cadastro e autenticação, perfil de usuário,
 cadastro de veículo e habilitação de motorista, busca e oferta de caronas,
@@ -22,9 +22,23 @@ não implementa reconhecimento facial.
 | --- | --- |
 | Frontend | React Native, Expo SDK 58 e TypeScript |
 | Backend | NestJS 11, Node.js 24 e TypeScript |
+| Painel administrativo | React 19, Vite 8 e TypeScript |
 | Banco de dados | PostgreSQL 17 |
 | ORM e migrações | Prisma 7 |
 | Comunicação | API REST (JSON) e Socket.IO/WebSocket para conversas |
+
+## Organização do código
+
+| Pasta | Componente |
+| --- | --- |
+| `UniMove-front/` | Aplicativo mobile (React Native/Expo) |
+| `UniMove-back/` | API NestJS, Prisma e operações compartilhadas |
+| `UniMove-admin/` | Painel administrativo (React/Vite) |
+| `.github/workflows/` | Testes automatizados do app, API e painel |
+
+O painel usa a API do UniMove. O login de administrador é independente do login
+de estudante e requer as medidas de segurança administrativas disponíveis no
+backend. **Não envie arquivos `.env` reais ou segredos para o GitHub.**
 
 ## Executar localmente
 
@@ -92,7 +106,7 @@ npm start
 Leia o QR code com o Expo Go, ou escolha o emulador no menu do Expo. O dispositivo
 precisa alcançar o computador que está rodando o backend:
 
-- **Celular físico:** crie `UniMove-front/.env` a partir de `.envexample` e
+- **Celular físico:** crie `UniMove-front/.env` a partir de `.env.example` e
   substitua `IPDOSEUPC` pelo endereço IP local do computador, por exemplo
   `EXPO_PUBLIC_API_URL=http://192.168.1.20:3000/api/v1`. O celular e o computador
   devem estar na mesma rede.
@@ -104,6 +118,26 @@ precisa alcançar o computador que está rodando o backend:
 Depois de alterar a URL, reinicie o Expo para que a variável de ambiente seja
 carregada. Se o celular não conseguir conectar, confira a rede local e se o
 firewall permite conexões à porta 3000.
+
+### 3. Preparar e iniciar o painel administrativo
+
+Em outro terminal, na raiz do repositório:
+
+```powershell
+cd UniMove-admin
+Copy-Item .env.example .env
+npm ci
+npm run dev
+```
+
+O endereço padrão do Vite é `http://localhost:5173` e o proxy local encaminha
+`/api` para `http://localhost:3000`. No backend, configure
+`ADMIN_PANEL_ORIGINS=http://localhost:5173` e
+`ADMIN_PANEL_URL=http://localhost:5173` para desenvolvimento.
+
+Para produção, `UniMove-admin/vercel.json` faz o rewrite das solicitações de
+`/api` para a API do Render. A mudança do repositório de origem para deploy
+deve ser verificada separadamente no Vercel/Render/Expo.
 
 ### Encerrar o banco
 
@@ -117,7 +151,10 @@ docker compose stop postgres
 
 Com as dependências instaladas, os testes do frontend podem ser executados com
 `npm test` na pasta `UniMove-front`. Os comandos de teste e validação do backend
-estão descritos em `UniMove-back/README.md`.
+estão descritos em `UniMove-back/README.md`. Para o painel, execute
+`npm run lint`, `npm run typecheck`, `npm test` e `npm run build` em
+`UniMove-admin/`. O workflow `admin-frontend.yml` verifica esses comandos
+nas alterações relevantes.
 
 ## Documentação
 

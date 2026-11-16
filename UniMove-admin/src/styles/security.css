@@ -1,0 +1,1087 @@
+/*
+ * Telas de acesso e segurança administrativa, vindas do Figma Make.
+ *
+ * Duas traduções deliberadas em relação ao arquivo do Figma:
+ *
+ * 1. Cor por token, não hexadecimal. O Figma escreve #101828, #22c55e, #f8fafc
+ *    e companhia; aqui tudo passa por --ink, --accent, --surface-2 e irmãos, que
+ *    são exatamente esses valores. Assim o tema claro/escuro e qualquer ajuste
+ *    de marca continuam valendo em um lugar só.
+ * 2. Tamanho de texto pela escala do painel. O canvas do Figma Make é reduzido e
+ *    o CSS de lá chega a 8 px; reproduzir isso desfaria a rodada de tipografia e
+ *    contraste do PR #1, que estabeleceu 12 px como piso. A proporção entre os
+ *    tamanhos é preservada, o valor absoluto não.
+ *
+ * O resto — composição, espaçamento, hierarquia, bordas e estados — segue o
+ * desenho.
+ */
+
+/* ------------------------------------------------- telas fora da sessão */
+
+/**
+ * O cartão de autenticação do Figma tem cabeçalho de marca, corpo e rodapé, e
+ * por isso zera o próprio espaçamento. `.auth-card` sozinho continua com o
+ * espaçamento de antes, porque as telas de acesso negado e indisponível ainda
+ * o usam direto.
+ */
+.auth-shell {
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+}
+.auth-shell.auth-card-wide {
+  width: min(620px, calc(100vw - 32px));
+}
+.auth-brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.brand-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-inline > div {
+  display: grid;
+  gap: 2px;
+}
+.brand-inline strong {
+  color: var(--ink);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.brand-inline span {
+  width: fit-content;
+  padding: 1px 5px;
+  color: var(--green-text);
+  background: var(--green-bg);
+  border: 1px solid var(--green-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.auth-subtitle-tag {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: right;
+}
+.auth-card-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+.auth-card-footer {
+  padding: 12px 20px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  text-align: center;
+}
+.auth-heading {
+  display: grid;
+  gap: 6px;
+}
+.auth-heading h1 {
+  color: var(--ink);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.auth-heading p {
+  color: var(--ink-3);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+.heading-icon-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+/* O espaçamento do grid já separa os campos dentro do modal de senha. */
+.modal-body.auth-form > .field { margin-top: 0; }
+.auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+.auth-actions .button {
+  min-height: var(--control-height);
+}
+.auth-actions.full .button {
+  width: 100%;
+}
+.auth-secondary-links {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.auth-state-block {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+.auth-state-block h1,
+.auth-state-block h2 {
+  color: var(--ink);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.auth-state-block p {
+  color: var(--ink-3);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+.auth-state-block .verification-sheet,
+.auth-state-block .auth-actions {
+  width: 100%;
+}
+
+/* ------------------------------------------------------------ formulário */
+
+.field-error {
+  color: var(--red-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.input-error,
+.field input.input-error,
+.field textarea.input-error {
+  border-color: var(--red-solid);
+}
+.password-field {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+.password-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--green-bg);
+}
+.password-field input {
+  width: 0;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  height: calc(var(--control-height) - 2px);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+/* Evita o segundo anel de foco herdado do campo de texto genérico. */
+.field .password-field input:focus {
+  border: 0;
+  box-shadow: none;
+}
+.password-field > button {
+  flex: none;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  color: var(--ink-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.password-field > button:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.password-with-link {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+.password-with-link > .field {
+  width: 100%;
+}
+.forgot-link {
+  color: var(--accent-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.forgot-link:hover {
+  text-decoration: underline;
+}
+.password-checklist {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.password-checklist > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.password-checklist ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.password-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+}
+.password-checklist li.valid {
+  color: var(--green-text);
+  font-weight: 600;
+}
+.check-indicator {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+.password-checklist li.valid .check-indicator {
+  color: var(--surface);
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+.checkbox-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.checkbox-confirm input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--accent-ink);
+}
+
+/* --------------------------------------------------- código de 6 dígitos */
+
+.otp-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+/*
+ * Grade de seis colunas com minmax(0, 1fr) em vez de caixas de largura fixa:
+ * é o que garante que as casas encolham junto com a coluna. Com largura fixa
+ * a sexta casa cai de linha em coluna estreita — ou, pior, é cortada em
+ * silêncio pelo overflow hidden da moldura.
+ */
+.otp-inputs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 360px;
+}
+/*
+ * As seis casas dividem a largura disponível em vez de terem tamanho fixo:
+ * numa coluna estreita, 6 × 48 px mais os vãos estouram e a sexta casa cai
+ * para a linha de baixo, o que parece defeito. O teto de 56 px evita que elas
+ * fiquem desproporcionais numa tela larga.
+ */
+.otp-slot {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  padding: 0;
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.otp-slot:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--green-bg);
+  outline: none;
+}
+
+/* -------------------------------------------------------------- avisos */
+
+.alert-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+.alert-banner > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.alert-banner > div {
+  flex: 1;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.alert-banner strong {
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+.alert-info {
+  color: var(--blue-text);
+  background: var(--blue-bg);
+  border-color: #b2ddff;
+}
+.alert-success {
+  color: var(--green-text);
+  background: var(--green-bg);
+  border-color: #abefc6;
+}
+.alert-warning {
+  color: var(--amber-text);
+  background: var(--amber-bg);
+  border-color: #fedf89;
+}
+.alert-danger {
+  color: var(--red-text);
+  background: var(--red-bg);
+  border-color: #fecdca;
+}
+.attention-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-md);
+}
+.attention-icon.green {
+  color: var(--green-text);
+  background: var(--green-bg);
+}
+.attention-icon.amber {
+  color: var(--amber-text);
+  background: var(--amber-bg);
+}
+.attention-icon.red {
+  color: var(--red-text);
+  background: var(--red-bg);
+}
+.attention-icon.blue {
+  color: var(--blue-text);
+  background: var(--blue-bg);
+}
+.privacy-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.privacy-note svg {
+  flex: none;
+}
+
+/* ------------------------------------------------------- blocos de dados */
+
+.verification-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.verification-sheet > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.verification-sheet span {
+  color: var(--ink-4);
+  font-size: var(--text-xs);
+}
+.verification-sheet strong {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  overflow-wrap: break-word;
+}
+.verification-sheet.one-col {
+  grid-template-columns: minmax(0, 1fr);
+}
+.security-guidelines {
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.security-guidelines h4 {
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+.security-guidelines ul,
+.scope-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.security-guidelines li,
+.scope-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+.security-guidelines svg,
+.scope-list svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-ink);
+}
+.inset-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.inset-section h4 {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+.inset-section > div:first-child p {
+  margin-top: 4px;
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* --------------------------------------- passo a passo e autenticador */
+
+.step-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 0 0 14px;
+  margin: 0;
+  border-bottom: 1px solid var(--line-soft);
+  list-style: none;
+}
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.step-index {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.step-item.step-current {
+  color: var(--ink);
+}
+.step-item.step-current .step-index {
+  color: var(--green-text);
+  background: var(--green-bg);
+  border-color: var(--accent);
+}
+.step-item.step-done {
+  color: var(--green-text);
+}
+.step-item.step-done .step-index {
+  color: var(--surface);
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+.mfa-setup-grid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  /* Sem isto o conteúdo da segunda coluna empurra a trilha além do cartão, e
+     o overflow: hidden da moldura corta em silêncio em vez de rolar. */
+  min-width: 0;
+}
+.qr-box {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+.qr-frame {
+  width: 152px;
+  height: 152px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+/* O QR vem do servidor como data URI; ocupa o quadro inteiro. */
+.qr-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.qr-box small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.manual-key-box {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+.manual-key-box > div {
+  min-width: 0;
+}
+.manual-key-box span {
+  display: block;
+  color: var(--ink-4);
+  font-size: var(--text-xs);
+}
+.manual-key-box strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.mfa-verify-column {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.mfa-verify-column h4 {
+  color: var(--ink);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+.mfa-verify-column p {
+  color: var(--ink-3);
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+
+/* ------------------------------------------- códigos de recuperação */
+
+.recovery-codes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.recovery-code-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.recovery-code-item span {
+  color: var(--ink-4);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.recovery-code-item strong {
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+.recovery-utility-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.recovery-method-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.recovery-method-tabs > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: border-color 150ms ease-out, background 150ms ease-out;
+}
+.recovery-method-tabs > button svg {
+  flex: none;
+  margin-top: 2px;
+}
+.recovery-method-tabs > button[aria-selected="true"] {
+  color: var(--green-text);
+  background: var(--green-bg);
+  border-color: var(--accent);
+}
+.recovery-method-tabs > button div {
+  display: grid;
+  gap: 3px;
+}
+.recovery-method-tabs strong {
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+.recovery-method-tabs small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* ----------------------------------------------- páginas do painel */
+
+.account-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.account-card {
+  display: grid;
+  align-content: start;
+  padding-bottom: 16px;
+}
+.account-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.account-identity > div {
+  min-width: 0;
+}
+.account-identity h2 {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.account-identity p {
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+.inline-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.account-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  padding: 14px 18px 0;
+}
+.account-meta-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+}
+.account-meta-grid span {
+  color: var(--ink-4);
+  font-size: var(--text-xs);
+}
+.account-meta-grid strong {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  overflow-wrap: break-word;
+}
+.account-security-list {
+  display: grid;
+  padding: 0 18px;
+}
+.security-summary-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.security-summary-row > div {
+  flex: 1;
+  min-width: 160px;
+  display: grid;
+  gap: 3px;
+}
+.security-summary-row strong {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+.security-summary-row small {
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.card-divider-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 18px 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.action-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stat-band-security {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.subpage-back {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+}
+.admin-detail-strip .stat-label {
+  margin-bottom: 0;
+}
+.sub-heading {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.subtle-inline {
+  margin-top: 2px;
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+}
+.mini-timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.mini-timeline > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.mini-timeline i {
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  flex: none;
+  background: var(--ink-4);
+  border-radius: 50%;
+}
+.mini-timeline i[data-tone="green"] {
+  background: var(--accent);
+}
+.mini-timeline i[data-tone="amber"] {
+  background: var(--amber-text);
+}
+.mini-timeline i[data-tone="red"] {
+  background: var(--red-solid);
+}
+.mini-timeline small {
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--ink-4);
+  white-space: nowrap;
+  /* Sem isto o navegador reduz <small> a 0.8em do pai e o texto cai de 13
+     para 10,4 px, abaixo do piso de 12 px da rodada de tipografia. */
+  font-size: var(--text-sm);
+}
+.admin-history-columns {
+  display: grid;
+  gap: 18px;
+  padding: 14px 18px 0;
+}
+.permission-picker {
+  display: grid;
+  gap: 10px;
+}
+.permission-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.permission-option:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.permission-option input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--accent-ink);
+}
+.permission-option > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.permission-option strong {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+.permission-option small {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.permission-option[data-sensitive="true"] {
+  border-color: #fedf89;
+  background: var(--amber-bg);
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.preset-row > span {
+  color: var(--ink-4);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------- menu de ação da linha */
+
+.context-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+.context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  cursor: default;
+}
+.context-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 45;
+  min-width: 232px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+}
+.context-menu button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--ink-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-align: left;
+}
+.context-menu button:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.context-menu button.danger {
+  color: var(--red-text);
+}
+.context-menu button.danger:hover {
+  background: var(--red-bg);
+}
+
+/* ------------------------------------------------- menu lateral: seções */
+
+.nav-section-label {
+  padding: 14px 12px 6px;
+  color: var(--ink-4);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+@media (min-width: 901px) {
+  /* No modo ícones, o título vira um divisor; o nome acessível permanece no nav. */
+  .sidebar-collapsed .nav-section-label {
+    height: 1px;
+    margin: 12px 8px 8px;
+    padding: 0;
+    overflow: hidden;
+    border-top: 1px solid var(--line);
+    font-size: 0;
+    line-height: 0;
+    white-space: nowrap;
+  }
+}
+
+/* --------------------------------------------------------- responsivo */
+
+@media (max-width: 900px) {
+  .mfa-setup-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qr-box {
+    justify-items: start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-brand-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .auth-subtitle-tag {
+    text-align: left;
+  }
+  .auth-card-body {
+    padding: 16px;
+  }
+  .auth-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .auth-actions .button {
+    width: 100%;
+    justify-content: center;
+    /* Alvo de toque confortável no celular. */
+    min-height: 44px;
+  }
+  .otp-slot {
+    height: 48px;
+  }
+  .account-identity,
+  .account-meta-grid,
+  .account-security-list,
+  .card-divider-actions,
+  .admin-history-columns {
+    padding-inline: 14px;
+  }
+  .card-divider-actions .button,
+  .recovery-utility-bar .button {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .context-menu {
+    min-width: 200px;
+  }
+}
+
+/* Espaçamento interno das listas que vivem dentro de um painel. */
+.scope-list.in-card {
+  padding: 14px 18px 0;
+}
+.mini-timeline.in-card {
+  padding: 0 18px 18px;
+}

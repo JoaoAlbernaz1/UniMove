@@ -1,0 +1,18 @@
+/* Inter servida pelo proprio painel: rede que bloqueie o Google Fonts nao troca
+   a tipografia no meio do uso, e a CSP nao precisa liberar dominio de terceiro.
+   O arquivo e variavel e vem com unicode-range: o navegador baixa so o subset
+   que a pagina usa. */
+@import '@fontsource-variable/inter/wght.css';
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/shell.css';
+@import './styles/components.css';
+@import './styles/pages.css';
+@import './styles/security.css';
+
+@theme {
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #101828;
+  --color-accent: #22c55e;
+}
