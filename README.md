@@ -106,7 +106,7 @@ npm start
 Leia o QR code com o Expo Go, ou escolha o emulador no menu do Expo. O dispositivo
 precisa alcançar o computador que está rodando o backend:
 
-- **Celular físico:** crie `UniMove-front/.env` a partir de `.envexample` e
+- **Celular físico:** crie `UniMove-front/.env` a partir de `.env.example` e
   substitua `IPDOSEUPC` pelo endereço IP local do computador, por exemplo
   `EXPO_PUBLIC_API_URL=http://192.168.1.20:3000/api/v1`. O celular e o computador
   devem estar na mesma rede.
