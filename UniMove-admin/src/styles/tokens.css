@@ -1,0 +1,61 @@
+/*
+ * Identidade do UniCarona: #101828 é a cor das ações e do texto principal, #22C55E é o
+ * acento e #F8FAFC é o fundo. O verde puro não passa em contraste como texto ou como fundo
+ * de texto branco: para isso existe --accent-ink.
+ */
+:root {
+  --admin-text-scale: 1;
+
+  --ink: #101828;
+  --ink-2: #344054;
+  --ink-3: #475467;
+  --ink-4: #667085;
+  --line: #e4e7ec;
+  --line-soft: #f2f4f7;
+  --line-strong: #d0d5dd;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --hover: #f2f4f7;
+
+  --accent: #22c55e;
+  --accent-ink: #15803d;
+
+  --green-text: #067647;
+  --green-bg: #ecfdf3;
+  --amber-text: #b54708;
+  --amber-bg: #fffaeb;
+  --red-text: #b42318;
+  --red-bg: #fef3f2;
+  --red-solid: #d92d20;
+  --red-solid-hover: #b42318;
+  --blue-text: #175cd3;
+  --blue-bg: #eff8ff;
+  --gray-text: #475467;
+  --gray-bg: #f2f4f7;
+
+  --text-xs: calc(0.75rem * var(--admin-text-scale));
+  --text-sm: calc(0.8125rem * var(--admin-text-scale));
+  --text-md: calc(0.875rem * var(--admin-text-scale));
+  --text-lg: calc(1rem * var(--admin-text-scale));
+  --text-xl: calc(1.375rem * var(--admin-text-scale));
+  --text-stat: calc(1.625rem * var(--admin-text-scale));
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-float: 0 4px 6px -2px rgba(16, 24, 40, 0.05), 0 12px 24px -4px rgba(16, 24, 40, 0.12);
+  --shadow-modal: 0 24px 48px -12px rgba(16, 24, 40, 0.24);
+
+  --sidebar-width: 232px;
+  --sidebar-collapsed: 64px;
+  --topbar-height: 56px;
+  --control-height: 36px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --control-height: 40px;
+  }
+}
