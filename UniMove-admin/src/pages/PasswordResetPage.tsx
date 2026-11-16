@@ -12,6 +12,7 @@ import { Badge, Button } from "../components/ui"
 import { passwordResetApi } from "../services/adminIamApi"
 import { iamErrorMessage } from "../services/adminIamErrors"
 
+import { adminPath } from "../hooks/useRoute"
 const FOOTER = "Redefinir a senha não desativa a autenticação em duas etapas."
 
 type Stage =
@@ -36,7 +37,7 @@ export default function PasswordResetPage() {
           <h1>Solicitação registrada</h1>
           <p>{stage.message}</p>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Voltar ao login
             </Button>
           </div>
@@ -59,7 +60,7 @@ export default function PasswordResetPage() {
             continua obrigatório.
           </p>
           <div className="auth-actions">
-            <Button onClick={() => window.location.assign("/")}>
+            <Button onClick={() => window.location.assign(adminPath("/"))}>
               Ir para o login
             </Button>
           </div>
@@ -129,7 +130,7 @@ function RequestStage({ onSent }: { onSent: (message: string) => void }) {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => window.location.assign("/")}
+            onClick={() => window.location.assign(adminPath("/"))}
             disabled={busy}
           >
             <ArrowLeft size={15} aria-hidden="true" /> Voltar ao login
@@ -186,7 +187,7 @@ function ResetStage({
           <h1>Este link não vale mais</h1>
           <p>{error}</p>
           <div className="auth-actions">
-            <Button variant="secondary" onClick={() => window.location.assign("/")}>
+            <Button variant="secondary" onClick={() => window.location.assign(adminPath("/"))}>
               Voltar ao login
             </Button>
             <Button onClick={onRestart}>Solicitar novo link</Button>
@@ -239,7 +240,7 @@ function ResetStage({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => window.location.assign("/")}
+            onClick={() => window.location.assign(adminPath("/"))}
             disabled={busy}
           >
             Cancelar
