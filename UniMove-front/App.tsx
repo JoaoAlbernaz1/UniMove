@@ -140,17 +140,42 @@ function UserLayout({ children }: { children: ReactNode }) {
   );
 }
 
+type StudentScreen = 'Welcome' | 'Login' | 'Register';
+
+function studentScreenFromUrl(): StudentScreen {
+  if (Platform.OS !== 'web') return 'Welcome';
+  if (window.location.pathname === '/entrar') return 'Login';
+  if (window.location.pathname === '/cadastro') return 'Register';
+  return 'Welcome';
+}
+
 function SignedOutApp() {
-  const [signedOutScreen, setSignedOutScreen] = useState<
-    'Welcome' | 'Login' | 'Register'
-  >('Welcome');
+  const [signedOutScreen, setSignedOutScreen] = useState<StudentScreen>(studentScreenFromUrl);
+
+  // A rota do aluno é independente de /admin (painel administrativo).
+  // Também permite atualizar /entrar e usar os botões voltar/avançar do navegador.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onPopState = () => setSignedOutScreen(studentScreenFromUrl());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  function navigate(screen: StudentScreen) {
+    if (Platform.OS === 'web') {
+      const path = screen === 'Login' ? '/entrar' : screen === 'Register' ? '/cadastro' : '/';
+      if (window.location.pathname !== path) window.history.pushState(null, '', path);
+    }
+    setSignedOutScreen(screen);
+  }
+
   if (signedOutScreen === 'Register') {
-    return <RegisterScreen onBack={() => setSignedOutScreen('Login')} />;
+    return <RegisterScreen onBack={() => navigate('Login')} />;
   }
   if (signedOutScreen === 'Login') {
-    return <LoginScreen onRegister={() => setSignedOutScreen('Register')} />;
+    return <LoginScreen onRegister={() => navigate('Register')} />;
   }
-  return <WelcomeScreen onStart={() => setSignedOutScreen('Login')} />;
+  return <WelcomeScreen onStart={() => navigate('Login')} />;
 }
 
 function SignedInApp() {
