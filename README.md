@@ -33,12 +33,25 @@ não implementa reconhecimento facial.
 | --- | --- |
 | `UniMove-front/` | Aplicativo mobile (React Native/Expo) |
 | `UniMove-back/` | API NestJS, Prisma e operações compartilhadas |
-| `UniMove-admin/` | Painel administrativo (React/Vite) |
+| `UniMove-back/src/modules/admin/` | **Backend do painel administrativo**: autenticação, usuários, segurança, relatórios e gestão |
+| `UniMove-admin/` | **Frontend do painel administrativo** (React/Vite) |
 | `.github/workflows/` | Testes automatizados do app, API e painel |
 
 O painel usa a API do UniMove. O login de administrador é independente do login
 de estudante e requer as medidas de segurança administrativas disponíveis no
 backend. **Não envie arquivos `.env` reais ou segredos para o GitHub.**
+
+## Para avaliação acadêmica
+
+O **frontend e o backend estão versionados neste mesmo repositório**. O professor pode consultar diretamente:
+
+- [Frontend do aplicativo](UniMove-front/)
+- [Frontend do painel administrativo](UniMove-admin/)
+- [Backend/API do UniMove](UniMove-back/)
+- [Código do backend administrativo](UniMove-back/src/modules/admin/)
+- [Pipeline de testes do painel](.github/workflows/admin-frontend.yml)
+
+O painel se comunica com a **API compartilhada** do UniMove pelo prefixo `/api/v1/admin`. Não existe um segundo backend isolado para o painel: as rotas administrativas estão implementadas dentro do serviço NestJS principal. Para executar a aplicação, consulte as instruções abaixo, com três terminais separados (API, app e painel). As funcionalidades administrativas exigem credenciais próprias e autenticação de dois fatores.
 
 ## Executar localmente
 
