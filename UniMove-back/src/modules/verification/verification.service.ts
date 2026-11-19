@@ -231,7 +231,12 @@ export class VerificationService {
           where: { userId },
           include: {
             user: {
-              select: { fullName: true, institutionalEmail: true, studentNumber: true, course: true },
+              select: {
+                fullName: true,
+                institutionalEmail: true,
+                studentNumber: true,
+                course: true,
+              },
             },
           },
         });
@@ -249,9 +254,7 @@ export class VerificationService {
       });
     } catch (error) {
       if (!(error instanceof HttpException) || error.getStatus() >= 500) {
-        verificationLogger.error(
-          JSON.stringify({ stage, ...safeErrorDetails(error) }),
-        );
+        verificationLogger.error(JSON.stringify({ stage, ...safeErrorDetails(error) }));
       }
       throw error;
     }
