@@ -1,7 +1,11 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { PDFParse } from 'pdf-parse';
 import type { PrismaService } from '../../database/prisma.service';
-import { AcademicVerificationStatus, NotificationType, RoleName } from '../../generated/prisma/enums';
+import {
+  AcademicVerificationStatus,
+  NotificationType,
+  RoleName,
+} from '../../generated/prisma/enums';
 import type { NotificationService } from '../notifications/notifications.service';
 import { VerificationService } from './verification.service';
 
