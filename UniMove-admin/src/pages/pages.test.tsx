@@ -109,9 +109,29 @@ describe("verificações", () => {
     await user.click(within(dialog).getByRole("button", { name: /rejeitar vínculo/i }))
     await user.type(await screen.findByLabelText("Motivo obrigatório"), "Motivo escrito")
     await user.click(screen.getByRole("button", { name: "Confirmar rejeição" }))
-    expect(await screen.findByText("Erro interno do servidor.")).toBeTruthy()
+    expect(await screen.findByText(/O servidor retornou erro 500 durante a rejeição/)).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Confirmar rejeição" }).disabled).toBe(true)
     expect(screen.getByLabelText<HTMLTextAreaElement>("Motivo obrigatório").value).toBe("Motivo escrito")
     expect(screen.getAllByText("Lucas Ferreira").length).toBeGreaterThan(0)
+  })
+
+  it("erro 500 na aprovação impede reenvio e não informa sucesso", async () => {
+    window.history.pushState(null, "", "/verificacoes")
+    const user = userEvent.setup()
+    const { routes } = verificationRoutes()
+    routes[`PATCH /admin/academic-verifications/${STUDENT_ID}`] = {
+      status: 500,
+      body: { message: "Erro interno do servidor.", code: "HTTP_500" },
+    }
+    const api = fakeApi(routes)
+    const dialog = await openReview(user)
+    await user.click(within(dialog).getByRole("button", { name: /aprovar vínculo/i }))
+    await user.click(await screen.findByRole("button", { name: "Confirmar aprovação" }))
+
+    expect(await screen.findByText(/O servidor retornou erro 500 durante a aprovação/)).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Confirmar aprovação" }).disabled).toBe(true)
+    expect(api.find("PATCH", `/admin/academic-verifications/${STUDENT_ID}`)).toHaveLength(1)
+    expect(screen.queryByText("Vínculo de Lucas Ferreira aprovado.")).toBeNull()
   })
 
   it("conflito 409 avisa e recarrega a lista", async () => {
