@@ -34,6 +34,13 @@ export default function VerificationsPage() {
   const tab = (values.status || "PENDING_REVIEW") as VerificationStatus
   const [selected, setSelected] = useState<VerificationRow | null>(null)
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null)
+  // Evita que um erro 5xx leve a novos envios repetidos da mesma decisão.
+  const [serverFailure, setServerFailure] = useState(false)
+
+  function beginDecision(next: "approve" | "reject") {
+    setServerFailure(false)
+    setDecision(next)
+  }
   const panelId = useId()
 
   const list = useQuery(() => verificationsApi.list(tab, page), [tab, page])
@@ -89,6 +96,13 @@ export default function VerificationsPage() {
         setSelected(null)
         refresh()
         return
+      }
+      if (error instanceof ApiError && error.status >= 500) {
+        setServerFailure(true)
+        const action = status === "APPROVED" ? "aprovação" : "rejeição"
+        throw new Error(
+          `O servidor retornou erro ${error.status} durante a ${action}. A decisão não foi confirmada. Feche esta janela e atualize a lista para verificar a situação antes de tentar novamente. Se persistir, contate o suporte.`,
+        )
       }
       throw error
     }
@@ -288,10 +302,10 @@ export default function VerificationsPage() {
             </Button>
             {selected.status === "PENDING_REVIEW" && (
               <>
-                <Button variant="secondary" onClick={() => setDecision("reject")}>
+                <Button variant="secondary" onClick={() => beginDecision("reject")}>
                   Rejeitar vínculo
                 </Button>
-                <Button onClick={() => setDecision("approve")}>
+                <Button onClick={() => beginDecision("approve")}>
                   <CheckCircle2 size={15} aria-hidden="true" /> Aprovar vínculo
                 </Button>
               </>
@@ -304,6 +318,7 @@ export default function VerificationsPage() {
           title="Aprovar vínculo acadêmico"
           description="Confirme que a autenticidade e a correspondência dos dados foram verificadas no validador oficial."
           confirmLabel="Confirmar aprovação"
+          confirmDisabled={serverFailure}
           onClose={() => setDecision(null)}
           onConfirm={() => decide("APPROVED")}
         />
@@ -313,6 +328,7 @@ export default function VerificationsPage() {
           title="Rejeitar vínculo acadêmico"
           description="O estudante verá o motivo no aplicativo e poderá enviar uma nova comprovação."
           confirmLabel="Confirmar rejeição"
+          confirmDisabled={serverFailure}
           destructive
           requireReason
           onClose={() => setDecision(null)}
