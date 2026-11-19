@@ -1,7 +1,8 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { PDFParse } from 'pdf-parse';
 import type { PrismaService } from '../../database/prisma.service';
-import { AcademicVerificationStatus } from '../../generated/prisma/enums';
+import { AcademicVerificationStatus, NotificationType, RoleName } from '../../generated/prisma/enums';
+import type { NotificationService } from '../notifications/notifications.service';
 import { VerificationService } from './verification.service';
 
 jest.mock('pdf-parse', () => ({
@@ -145,6 +146,100 @@ describe('VerificationService', () => {
       });
       expect(logger.mock.calls[0][0]).not.toContain('sensitive value');
       expect(fileBuffer.every((byte) => byte === 0)).toBe(true);
+    } finally {
+      logger.mockRestore();
+    }
+  });
+
+  it('aprovação persiste e mantém a auditoria mesmo se a notificação falhar', async () => {
+    const verification = {
+      userId,
+      status: AcademicVerificationStatus.APPROVED,
+      reviewedAt: new Date(),
+      user: { fullName: 'Estudante de teste' },
+    };
+    const databaseError = Object.assign(new Error('não registrar dados privados do driver'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2000',
+    });
+    const notifications = { create: jest.fn().mockRejectedValue(databaseError) };
+    const logger = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    transaction.academicVerification.updateMany.mockResolvedValue({ count: 1 });
+    transaction.academicVerification.findUniqueOrThrow.mockResolvedValue(verification);
+    const serviceWithNotifications = new VerificationService(
+      prisma as unknown as PrismaService,
+      notifications as unknown as NotificationService,
+    );
+
+    try {
+      await expect(
+        serviceWithNotifications.review(
+          { id: userId, roles: [RoleName.ADMIN] },
+          userId,
+          'APPROVED',
+        ),
+      ).resolves.toEqual(verification);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(transaction.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'ACADEMIC_VERIFICATION_APPROVED',
+          actorUserId: userId,
+        }),
+      });
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId,
+          type: NotificationType.ACCOUNT_UPDATED,
+          metadata: { kind: 'VERIFICATION_APPROVED' },
+        }),
+      );
+      const entry = JSON.parse(logger.mock.calls[0][0] as string) as Record<string, unknown>;
+      expect(entry).toMatchObject({
+        stage: 'persist-review-notification',
+        errorType: 'PrismaClientKnownRequestError',
+        errorCode: 'P2000',
+      });
+      expect(logger.mock.calls[0][0]).not.toContain('dados privados');
+    } finally {
+      logger.mockRestore();
+    }
+  });
+
+  it('falha na auditoria cancela a aprovação e não envia notificação', async () => {
+    const databaseError = Object.assign(new Error('detalhes privados'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2003',
+    });
+    const notifications = { create: jest.fn() };
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    transaction.academicVerification.updateMany.mockResolvedValue({ count: 1 });
+    transaction.academicVerification.findUniqueOrThrow.mockResolvedValue({
+      userId,
+      status: AcademicVerificationStatus.APPROVED,
+    });
+    transaction.auditLog.create.mockRejectedValueOnce(databaseError);
+    const serviceWithNotifications = new VerificationService(
+      prisma as unknown as PrismaService,
+      notifications as unknown as NotificationService,
+    );
+
+    try {
+      await expect(
+        serviceWithNotifications.review(
+          { id: userId, roles: [RoleName.ADMIN] },
+          userId,
+          'APPROVED',
+        ),
+      ).rejects.toBe(databaseError);
+      expect(notifications.create).not.toHaveBeenCalled();
+      const entry = JSON.parse(logger.mock.calls[0][0] as string) as Record<string, unknown>;
+      expect(entry).toMatchObject({
+        stage: 'audit-review',
+        errorType: 'PrismaClientKnownRequestError',
+        errorCode: 'P2003',
+      });
+      expect(logger.mock.calls[0][0]).not.toContain('detalhes privados');
     } finally {
       logger.mockRestore();
     }
