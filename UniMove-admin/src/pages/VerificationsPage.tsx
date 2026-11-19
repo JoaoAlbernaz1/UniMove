@@ -102,6 +102,7 @@ export default function VerificationsPage() {
         const action = status === "APPROVED" ? "aprovação" : "rejeição"
         throw new Error(
           `O servidor retornou erro ${error.status} durante a ${action}. A decisão não foi confirmada. Feche esta janela e atualize a lista para verificar a situação antes de tentar novamente. Se persistir, contate o suporte.`,
+          { cause: error },
         )
       }
       throw error
