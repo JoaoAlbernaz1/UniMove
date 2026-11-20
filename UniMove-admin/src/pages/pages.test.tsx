@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import App from "../App"
@@ -310,6 +310,48 @@ describe("usuários", () => {
 })
 
 describe("caronas e denúncias", () => {
+  it("atualiza novas caronas ao clicar e ao voltar para a aba", async () => {
+    window.history.pushState(null, "", "/caronas")
+    const user = userEvent.setup()
+    const routes = signedInRoutes()
+    const ride = {
+      id: STUDENT_ID,
+      status: "OPEN",
+      departureAt: "2026-11-20T18:00:00.000Z",
+      totalSeats: 4,
+      availableSeats: 3,
+      pricePerPersonCents: 700,
+      driver: { id: "driver-1", fullName: "Motorista Novo" },
+      originLocation: { name: "Ceilândia" },
+      destinationLocation: { name: "Taguatinga" },
+    }
+    let items: typeof ride[] = []
+    routes["GET /admin/rides"] = () => ({
+      body: items,
+      headers: {
+        "X-Total-Count": String(items.length),
+        "X-Status-Counts": JSON.stringify({ OPEN: items.length }),
+      },
+    })
+    const api = fakeApi(routes)
+    render(<App />)
+
+    expect(await screen.findByText("Nenhum resultado encontrado")).toBeTruthy()
+    const initiallyLoaded = api.find("GET", "/admin/rides").length
+
+    // Uma carona foi cadastrada depois que a tela já estava aberta.
+    items = [ride]
+    await user.click(screen.getByRole("button", { name: "Atualizar caronas" }))
+    expect(await screen.findByText("Motorista Novo")).toBeTruthy()
+    expect(api.find("GET", "/admin/rides").length).toBeGreaterThan(initiallyLoaded)
+
+    // Ao voltar à aba, a tela busca o estado atual, inclusive remoções.
+    items = []
+    fireEvent(document, new Event("visibilitychange"))
+    expect(await screen.findByText("Nenhum resultado encontrado")).toBeTruthy()
+    expect(screen.queryByText("Motorista Novo")).toBeNull()
+  })
+
   it("cancelamento de carona não existe na tela e valor não vira pagamento", async () => {
     window.history.pushState(null, "", "/caronas")
     const user = userEvent.setup()
