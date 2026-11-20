@@ -199,61 +199,86 @@ export class VerificationService {
   ) {
     if (status === AcademicVerificationStatus.REJECTED && !reviewNote?.trim())
       throw new BadRequestException('Informe o motivo da rejeição.');
-    const result = await this.prisma.$transaction(async (tx) => {
-      const update = await tx.academicVerification.updateMany({
-        where: { userId, status: AcademicVerificationStatus.PENDING_REVIEW },
-        data: {
-          status,
-          reviewedAt: new Date(),
-          reviewedById: actor.id,
-          reviewNote: reviewNote?.trim() || null,
-        },
-      });
-      if (!update.count) {
-        const existing = await tx.academicVerification.findUnique({
-          where: { userId },
-          select: { status: true },
-        });
-        if (!existing) throw new NotFoundException('Validação não encontrada.');
-        throw new ConflictException({
-          code: 'VERIFICATION_ALREADY_DECIDED',
-          message: 'Esta validação já foi decidida por outro administrador.',
-        });
-      }
-      const verification = await tx.academicVerification.findUniqueOrThrow({
-        where: { userId },
-        include: {
-          user: {
-            select: { fullName: true, institutionalEmail: true, studentNumber: true, course: true },
+
+    let stage = 'update-review';
+    let result;
+    try {
+      // Decisão e auditoria devem continuar atômicas. A notificação não pode
+      // impedir uma aprovação válida se a caixa de entrada estiver indisponível.
+      result = await this.prisma.$transaction(async (tx) => {
+        const update = await tx.academicVerification.updateMany({
+          where: { userId, status: AcademicVerificationStatus.PENDING_REVIEW },
+          data: {
+            status,
+            reviewedAt: new Date(),
+            reviewedById: actor.id,
+            reviewNote: reviewNote?.trim() || null,
           },
-        },
+        });
+        if (!update.count) {
+          const existing = await tx.academicVerification.findUnique({
+            where: { userId },
+            select: { status: true },
+          });
+          if (!existing) throw new NotFoundException('Validação não encontrada.');
+          throw new ConflictException({
+            code: 'VERIFICATION_ALREADY_DECIDED',
+            message: 'Esta validação já foi decidida por outro administrador.',
+          });
+        }
+        stage = 'load-review';
+        const verification = await tx.academicVerification.findUniqueOrThrow({
+          where: { userId },
+          include: {
+            user: {
+              select: {
+                fullName: true,
+                institutionalEmail: true,
+                studentNumber: true,
+                course: true,
+              },
+            },
+          },
+        });
+        stage = 'audit-review';
+        await tx.auditLog.create({
+          data: {
+            actorUserId: actor.id,
+            action: `ACADEMIC_VERIFICATION_${status}`,
+            entityType: 'AcademicVerification',
+            entityId: userId,
+            metadata: { reviewNote: reviewNote?.trim() || null },
+          },
+        });
+        return verification;
       });
-      await tx.auditLog.create({
-        data: {
-          actorUserId: actor.id,
-          action: `ACADEMIC_VERIFICATION_${status}`,
-          entityType: 'AcademicVerification',
-          entityId: userId,
-          metadata: { reviewNote: reviewNote?.trim() || null },
-        },
+    } catch (error) {
+      if (!(error instanceof HttpException) || error.getStatus() >= 500) {
+        verificationLogger.error(JSON.stringify({ stage, ...safeErrorDetails(error) }));
+      }
+      throw error;
+    }
+
+    // O registro é feito somente após a transação confirmar. A falta de uma
+    // notificação não desfaz a decisão nem gera reenvios da aprovação.
+    const approved = status === AcademicVerificationStatus.APPROVED;
+    try {
+      await this.notifications?.create({
+        userId,
+        type: NotificationType.ACCOUNT_UPDATED,
+        title: approved ? 'Validação aprovada' : 'Validação recusada',
+        message: approved
+          ? 'Sua matrícula foi confirmada. Você já pode buscar e oferecer caronas!'
+          : `Seu comprovante não foi aprovado: ${reviewNote?.trim()}. Envie um novo documento em Informações pessoais.`,
+        resourceType: 'ACADEMIC_VERIFICATION',
+        resourceId: userId,
+        metadata: { kind: approved ? 'VERIFICATION_APPROVED' : 'VERIFICATION_REJECTED' },
       });
-      const approved = status === AcademicVerificationStatus.APPROVED;
-      await this.notifications?.create(
-        {
-          userId,
-          type: NotificationType.ACCOUNT_UPDATED,
-          title: approved ? 'Validação aprovada' : 'Validação recusada',
-          message: approved
-            ? 'Sua matrícula foi confirmada. Você já pode buscar e oferecer caronas!'
-            : `Seu comprovante não foi aprovado: ${reviewNote?.trim()}. Envie um novo documento em Informações pessoais.`,
-          resourceType: 'ACADEMIC_VERIFICATION',
-          resourceId: userId,
-          metadata: { kind: approved ? 'VERIFICATION_APPROVED' : 'VERIFICATION_REJECTED' },
-        },
-        tx,
+    } catch (error) {
+      verificationLogger.warn(
+        JSON.stringify({ stage: 'persist-review-notification', ...safeErrorDetails(error) }),
       );
-      return verification;
-    });
+    }
     return result;
   }
 }
