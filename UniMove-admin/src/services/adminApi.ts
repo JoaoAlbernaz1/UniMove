@@ -34,9 +34,10 @@ function query(params: Params) {
   return text ? `?${text}` : ""
 }
 
-async function list<T>(path: string, params: Params): Promise<ListResult<T>> {
+async function list<T>(path: string, params: Params, init?: RequestInit): Promise<ListResult<T>> {
   const { data, headers } = await request<T[]>(
     `${path}${query({ limit: PAGE_SIZE, ...params })}`,
+    init,
   )
   const counts = headers.get("X-Status-Counts")
   return {
@@ -112,7 +113,7 @@ export const verificationsApi = {
 }
 
 export const ridesApi = {
-  list: (params: Params) => list<RideRow>("/admin/rides", params),
+  list: (params: Params) => list<RideRow>("/admin/rides", params, { cache: "no-store" }),
   detail: async (id: string) =>
     (await request<RideDetail>(`/admin/rides/${id}`)).data,
 }
