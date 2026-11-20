@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { ChevronRight, Flag, LockKeyhole } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ChevronRight, Flag, LockKeyhole, RefreshCw } from "lucide-react"
 import { ListView, type Column } from "../components/DataTable"
 import {
   Avatar,
@@ -66,6 +66,21 @@ export default function RidesPage() {
       }),
     [values.q, values.status, values.from, values.to, page],
   )
+  // A lista precisa acompanhar novas caronas publicadas enquanto o painel está
+  // aberto. Ao voltar para a aba, atualiza imediatamente; em primeiro plano,
+  // revalida a cada 30s sem gerar tráfego em abas ocultas.
+  useEffect(() => {
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void rides.reload()
+    }
+    document.addEventListener("visibilitychange", refreshVisible)
+    const interval = window.setInterval(refreshVisible, 30_000)
+    return () => {
+      document.removeEventListener("visibilitychange", refreshVisible)
+      window.clearInterval(interval)
+    }
+  }, [rides.reload])
+
   const counts = rides.data?.statusCounts ?? {}
 
   const columns: Column<RideRow>[] = [
@@ -142,6 +157,15 @@ export default function RidesPage() {
       <PageIntro
         title="Gestão de caronas"
         description="Consulte viagens publicadas, reservas e solicitações."
+        action={
+          <Button
+            variant="secondary"
+            onClick={() => void rides.reload()}
+            disabled={rides.loading}
+          >
+            <RefreshCw size={15} aria-hidden="true" /> Atualizar caronas
+          </Button>
+        }
       />
       <section className="panel">
         <StatusFilter
