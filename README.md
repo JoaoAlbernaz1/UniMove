@@ -181,4 +181,4 @@ nas alterações relevantes.
 
 ---
 
-**Grupo 05 — Universidade Católica de Brasília — Análise e Projeto de Software — 2026**
+**Grupo 05 — Universidade Católica de Brasília — Análise e Projeto de Software — João Victor Martins UC23101140, Jefferson Lucas UC23200424, Gustavo Mendonça UC23200489, Kaion Brandão Lima UC23200215, Matheus Pontieri UC22201278 - 2026**
